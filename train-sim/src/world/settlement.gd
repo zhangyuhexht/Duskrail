@@ -156,10 +156,14 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 				var podium_h := 0.0
 				if city:
 					var core := 1.0 - clampf(Vector2(px - center.x, pz - center.z).length() / radius, 0.0, 1.0)
-					h = rng.randf_range(12.0, 26.0) + core * rng.randf_range(14.0, 56.0)
+					h = rng.randf_range(14.0, 28.0) + core * rng.randf_range(14.0, 52.0)
+					# Keep most blocks mid-rise, with a restrained number of
+					# genuine towers near the city core.
+					if core > 0.42 and rng.randf() < 0.22:
+						h = maxf(h, rng.randf_range(62.0, 94.0))
 					podium_h = minf(11.0, h * 0.32)
 				else:
-					h = rng.randf_range(5.0, 12.0)
+					h = rng.randf_range(6.0, 14.0)
 				var y := pad_h + 0.14
 				var facade_dep := dep * (1.18 if city else 1.0)
 				var wi := rng.randi_range(0, walls.size() - 1)

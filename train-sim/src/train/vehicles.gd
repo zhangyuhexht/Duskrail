@@ -214,7 +214,7 @@ static func electric_loco() -> Vehicle:
 	v.length = 20.0
 	v.width = 3.1
 	v.height = 3.86
-	v.bogie_spacing = 12.4
+	v.bogie_spacing = 13.0
 	v.wheel_radius = 0.5
 	v.mass_empty = 138.0
 	v.mass_loaded = 138.0
@@ -463,7 +463,7 @@ static func passenger_coach() -> Vehicle:
 	v.length = 25.5
 	v.width = 3.1
 	v.height = 4.05
-	v.bogie_spacing = 17.5
+	v.bogie_spacing = 18.2
 	v.wheel_radius = 0.4575
 	v.mass_empty = 48.0
 	v.mass_loaded = 56.0
@@ -478,7 +478,7 @@ static func passenger_coach() -> Vehicle:
 	var roof_mat := Gfx.metal(Color(0.47, 0.49, 0.51), 0.5, 0.65)
 	var frame_mat := Gfx.metal(Color(0.61, 0.63, 0.65), 0.28, 0.84)
 	var dark_mat := Gfx.metal(C_DARK, 0.6, 0.5)
-	var glass_mat := Gfx.glass(Color(0.20, 0.28, 0.34), 0.035, 0.28)
+	var glass_mat := Gfx.glass(Color(0.05, 0.09, 0.15), 0.16, 0.98)
 	var door_glass := Gfx.glass(Color(0.14, 0.20, 0.26), 0.035, 0.38)
 	var skirt_mat := Gfx.metal(C_SKIRT, 0.6, 0.55)
 
@@ -513,6 +513,7 @@ static func passenger_coach() -> Vehicle:
 	var side_segments := [Vector2(-half_len, -11.02), Vector2(-9.88, 9.88),
 			Vector2(11.02, half_len)]
 	var band_posts := []
+	var band_vposts := []
 	for side: float in [-1.0, 1.0]:
 		band_posts.append([Forge.box(Vector3(0.025, 0.28, half_len * 2.0 + 0.01)),
 				Transform3D(Basis(), Vector3(side * 1.556, 3.64, 0))])
@@ -521,9 +522,10 @@ static func passenger_coach() -> Vehicle:
 					Transform3D(Basis(), Vector3(side * 1.556, 2.39, (seg.x + seg.y) * 0.5))])
 		for pz: float in [-9.765, -7.7, -5.5, -3.3, -1.1, 1.1, 3.3, 5.5, 7.7, 9.765]:
 			var pw := 0.29 if absf(pz) > 9.0 else 0.56
-			band_posts.append([Forge.box(Vector3(0.022, 1.60, pw)),
+			band_vposts.append([Forge.box(Vector3(0.022, 1.60, pw)),
 					Transform3D(Basis(), Vector3(side * 1.556, 2.98, pz))])
 	v.merged(band_posts, band_mat, "WindowBand")
+	v.merged(band_vposts, band_mat, "WindowBandPosts")
 	for side: float in [-1.0, 1.0]:
 		for seg: Vector2 in side_segments:
 			v.part(Forge.box(Vector3(0.025, 0.06, seg.y - seg.x)), red_mat,
@@ -534,23 +536,15 @@ static func passenger_coach() -> Vehicle:
 	var coach_hw := v.width * 0.5
 	var coach_glass_mesh := _panel_mesh(1.48, 0.78, 0.075, 0.012)
 	for side: float in [-1.0, 1.0]:
-		var frame_items := []
 		var glass_items := []
 		var gasket_items := []
 		for i in range(9):
 			var z := -8.8 + float(i) * 2.2
-			# Build a real frame ring instead of a solid filler panel, so
-			# the glass really shows the lit interior from outside.
-			for fy: float in [-0.47, 0.47]:
-				frame_items.append([Forge.box(Vector3(1.64, 0.08, 0.07)),
-						_side_xf(side, coach_hw + 0.012, 3.06 + fy, z)])
-			for fz: float in [-0.82, 0.82]:
-				frame_items.append([Forge.box(Vector3(0.08, 0.94, 0.07)),
-						_side_xf(side, coach_hw + 0.012, 3.06, z + fz)])
+			# 25T 车窗为橡胶条安装，不再额外添加镀铬窗框；蓝色窗带立柱
+			# 已经形成窗间分隔，避免窗内出现多余的银色竖杆。
 			glass_items.append([coach_glass_mesh, _side_xf(side, coach_hw + 0.021, 3.06, z)])
 			gasket_items.append([Forge.box(Vector3(0.025, 0.03, 1.7)),
 					_side_xf(side, coach_hw + 0.022, 2.55, z)])
-		v.merged(frame_items, frame_mat, "WindowFrames")
 		v.merged(glass_items, glass_mat, "WindowGlass")
 		v.merged(gasket_items, frame_mat, "WindowSills")
 
@@ -756,11 +750,13 @@ static func _passenger_interior(v: Vehicle, half_len: float, floor_y: float, roo
 		# Window valance above the glazing.
 		v.part(Forge.box(Vector3(0.05, 0.24, span - 0.2)), wall_mat,
 				Transform3D(Basis(), Vector3(side * 1.44, 3.62, 0)), "InteriorWallTop")
-		# Interior pillars between the nine window openings.
+		# Line the inner face of the exterior blue band mullions with wall
+		# trim. Looking across the coach, the opposite mullions then read as
+		# pale interior trim instead of dark vertical rods in every window.
 		for pz: float in [-9.765, -7.7, -5.5, -3.3, -1.1, 1.1, 3.3, 5.5, 7.7, 9.765]:
 			var pw := 0.29 if absf(pz) > 9.0 else 0.56
-			v.part(Forge.box(Vector3(0.05, 0.90, pw)), wall_mat,
-					Transform3D(Basis(), Vector3(side * 1.44, 3.05, pz)), "InteriorWindowPillar")
+			v.part(Forge.box(Vector3(0.025, 1.62, pw)), wall_mat,
+					Transform3D(Basis(), Vector3(side * 1.535, 2.98, pz)), "InteriorMullionTrim")
 		for wz: float in [-8.8, -6.6, -4.4, -2.2, 0.0, 2.2, 4.4, 6.6, 8.8]:
 			v.part(Forge.box(Vector3(0.18, 0.05, 1.64)), frame_mat,
 					Transform3D(Basis(), Vector3(side * 1.36, 2.60, wz)), "InteriorWindowSill")
@@ -925,7 +921,7 @@ static func baggage_car(loaded := true) -> Vehicle:
 	v.length = 25.5
 	v.width = 3.1
 	v.height = 4.05
-	v.bogie_spacing = 17.5
+	v.bogie_spacing = 18.2
 	v.wheel_radius = 0.4575
 	v.mass_empty = 44.0
 	v.mass_loaded = 54.0
@@ -2339,7 +2335,7 @@ static func _build_carriage_bogie(v: Vehicle, z_center: float, wheel_r: float,
 	var wheel_mat := Gfx.metal(Color(0.50, 0.52, 0.54), 0.30, 0.88)
 	var damper_mat := Gfx.metal(Color(0.20, 0.20, 0.21), 0.42, 0.58)
 
-	var axle_abs := 1.20 if passenger else (0.93 if heavy else 0.915)
+	var axle_abs := 1.30 if passenger else (0.93 if heavy else 0.915)
 	var axle_z := [-axle_abs, axle_abs]
 	var x_frame := 0.90 if (passenger or heavy) else 0.88
 	var plate_t := 0.15
@@ -2562,7 +2558,7 @@ static func _legacy_build_carriage_bogie(v: Vehicle, z_center: float, wheel_r: f
 	var rubber := Gfx.carpet(Color(0.065, 0.06, 0.055))
 	var wheel_mat := Gfx.metal(Color(0.27, 0.26, 0.245), 0.5, 0.7)
 
-	var axle_abs := 1.20 if passenger else (0.93 if heavy else 0.915)
+	var axle_abs := 1.30 if passenger else (0.93 if heavy else 0.915)
 	var axle_z := [-axle_abs, axle_abs]
 	var x_frame := 1.02
 	var plate_w := 0.16
@@ -3100,7 +3096,7 @@ static func fuxing_car(cab := false, panto := false, livery := "cr400af") -> Veh
 	v.length = 25.5
 	v.width = 3.36
 	v.height = 4.06
-	v.bogie_spacing = 17.5
+	v.bogie_spacing = 18.2
 	v.wheel_radius = 0.43
 	v.mass_empty = 47.0
 	v.mass_loaded = 57.0
@@ -4777,7 +4773,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 	v.length = 20.0
 	v.width = 3.1
 	v.height = 3.95
-	v.bogie_spacing = 12.4
+	v.bogie_spacing = 13.0
 	v.wheel_radius = 0.5
 	var engine := engine_info(engine_id)
 	var skin := skin_info(skin_id)
@@ -5232,8 +5228,8 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 
 	_coupler(v, - front - 0.68, dark_mat)
 	_coupler(v, front + 0.68, dark_mat)
-	_build_freight_bogie(v, -6.2, 0.5)
-	_build_freight_bogie(v, 6.2, 0.5)
+	_build_freight_bogie(v, -6.5, 0.5)
+	_build_freight_bogie(v, 6.5, 0.5)
 
 	var panto := _pantograph(v, Transform3D(Basis(), Vector3(0, roof_y + 0.1, 3.7)))
 	v.pantographs.append(panto)
@@ -5387,9 +5383,9 @@ static func _build_hxd1_bogie(v: Vehicle, z_center: float, wheel_r: float) -> No
 	var brake_mat := Gfx.metal(Color(0.32, 0.33, 0.34), 0.38, 0.78)
 	var hose_mat := Gfx.metal(Color(0.045, 0.048, 0.052), 0.82, 0.18)
 
-	var axle_z := [-1.35, 1.35]
+	var axle_z := [-1.43, 1.43]
 	var x_frame := 1.05
-	var frame_half := 1.62
+	var frame_half := 1.70
 	var spring_primary := _coil_spring(0.09, 0.28, 5.0, 0.017, 24)
 	var spring_secondary := _coil_spring(0.065, 0.16, 4.0, 0.012, 20)
 	var frame_items := []
@@ -6030,15 +6026,10 @@ static func _add_loco_parts(v: Vehicle, parts: Array, front: float, roof_y: floa
 		var cut_bot_out := 8.90
 		var z_end := 9.58
 		# Side elevation of the skirt: a continuous lower valance with
-		# earlier/longer trapezoidal bogie cut-outs and a clean recess under
-		# the cab door so the step and doorway read properly.
-		var door_z0 := -6.10
-		var door_z1 := -5.00
-		var door_notch_y := 0.62
+		# trapezoidal bogie cut-outs. Keep the polygon convex between the
+		# cut-outs; a top-edge notch made the extruded face disappear.
 		var skirt_profile := PackedVector2Array([
-			Vector2(-z_end, y_top), Vector2(door_z0, y_top),
-			Vector2(door_z0, door_notch_y), Vector2(door_z1, door_notch_y),
-			Vector2(door_z1, y_top), Vector2(z_end, y_top), Vector2(z_end, y_bot),
+			Vector2(-z_end, y_top), Vector2(z_end, y_top), Vector2(z_end, y_bot),
 			Vector2(cut_bot_out, y_bot), Vector2(cut_top_out, y_lip),
 			Vector2(cut_top_in, y_lip), Vector2(cut_bot_in, y_bot),
 			Vector2(-cut_bot_in, y_bot), Vector2(-cut_top_in, y_lip),
@@ -6078,20 +6069,8 @@ static func _add_loco_parts(v: Vehicle, parts: Array, front: float, roof_y: floa
 				var tilt := Basis(Vector3.RIGHT, atan2(z1 - z0, y1 - y0))
 				v.part(Forge.box(Vector3(0.008, length + 0.02, 0.04)), skirt_edge,
 						Transform3D(tilt, mid), "SideSkirtEdgeSlope")
-			for top_seg: Array in [[-z_end, door_z0], [door_z1, z_end]]:
-				var ta := float(top_seg[0])
-				var tb := float(top_seg[1])
-				v.part(Forge.box(Vector3(0.012, 0.04, tb - ta)), steel,
-						Transform3D(Basis(), Vector3(side * (side_x + 0.002), y_top, (ta + tb) * 0.5)),
-						"SideSkirtTop")
-			# Edge returns around the cab-door recess.
-			for nz: float in [door_z0, door_z1]:
-				v.part(Forge.box(Vector3(0.012, y_top - door_notch_y, 0.05)), skirt_edge,
-						Transform3D(Basis(), Vector3(side * (side_x + 0.002),
-								(y_top + door_notch_y) * 0.5, nz)), "SideSkirtDoorRecess")
-			v.part(Forge.box(Vector3(0.012, 0.05, door_z1 - door_z0 + 0.04)), skirt_edge,
-					Transform3D(Basis(), Vector3(side * (side_x + 0.002), door_notch_y,
-							(door_z0 + door_z1) * 0.5)), "SideSkirtDoorRecess")
+			v.part(Forge.box(Vector3(0.012, 0.04, z_end * 2.0)), steel,
+					Transform3D(Basis(), Vector3(side * (side_x + 0.002), y_top, 0)), "SideSkirtTop")
 			for ez: float in [-z_end, z_end]:
 				v.part(Forge.box(Vector3(0.006, y_top - y_bot, 0.06)), skirt_mat,
 						Transform3D(Basis(), Vector3(side * (side_x + 0.002), (y_top + y_bot) * 0.5, ez)), "SideSkirtEndCap")

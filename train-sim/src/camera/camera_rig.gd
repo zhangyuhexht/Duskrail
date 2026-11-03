@@ -854,6 +854,65 @@ func _resolve_platform_face(prev_xz: Vector2) -> void:
 	_walk_pos.z = prev_xz.y
 
 
+func _side_door_zs(v: Vehicle) -> Array:
+	if v.kind == "loco":
+		return [float(_cab_walk_meta(v)["door_z"])]
+	if v.kind == "coach" or v.kind == "baggage":
+		var dz := v.length * 0.5 - 2.3
+		return [-dz, dz]
+	return []
+
+
+func _near_open_side_door(v: Vehicle, local: Vector3, pad := 1.0) -> bool:
+	if train == null or not train.doors_open or train.door_open_side == 0:
+		return false
+	if signf(local.x) != float(train.door_open_side):
+		return false
+	var shell := v.width * 0.5
+	if absf(local.x) > shell + pad or absf(local.x) < shell - 1.05:
+		return false
+	var floor_y := float(v.get_meta("train_walk_floor", 1.2))
+	if local.y < floor_y - 0.65 or local.y > floor_y + 2.45:
+		return false
+	for dz: float in _side_door_zs(v):
+		if absf(local.z - dz) <= 0.78:
+			return true
+	return false
+
+
+func _try_enter_open_side_door() -> bool:
+	if train == null or not train.doors_open or train.door_open_side == 0:
+		return false
+	for i in range(train.vehicles.size()):
+		var v: Vehicle = train.vehicles[i]
+		if v == null or not is_instance_valid(v) or not v.has_meta("train_walk"):
+			continue
+		var xf := v.get_global_transform_interpolated()
+		var local := xf.affine_inverse() * _walk_pos
+		var shell := v.width * 0.5
+		if signf(local.x) != float(train.door_open_side):
+			continue
+		if absf(local.x) > shell - 0.08:
+			continue
+		var floor_y := float(v.get_meta("train_walk_floor", 1.2))
+		if local.y < floor_y - 0.45 or local.y > floor_y + 1.55:
+			continue
+		for dz: float in _side_door_zs(v):
+			if absf(local.z - dz) <= 0.74:
+				_walk_vehicle = i
+				_train_walk = true
+				_cab_walk = false
+				_on_foot = true
+				_walk_vel = Vector3.ZERO
+				_walk_pos = xf * Vector3(0.0, floor_y, dz)
+				_last_walk_valid = false
+				_restore_cab_visibility()
+				camera.cull_mask = 0xFFFFF
+				camera.far = _far_distance(false)
+				return true
+	return false
+
+
 func _resolve_train_collision() -> void:
 	if train == null:
 		return
@@ -865,7 +924,7 @@ func _resolve_train_collision() -> void:
 		var local := xf.affine_inverse() * _walk_pos
 		var feet := local.y
 		var head := feet + WALK_EYE
-		var skip_body := false
+		var skip_body := _near_open_side_door(v, local)
 		if v == cab_v:
 			var meta := _cab_walk_meta(v)
 			if train.doors_open and train.door_open_side != 0 \
@@ -875,11 +934,11 @@ func _resolve_train_collision() -> void:
 		if not skip_body and head > 1.02 and feet < 4.0:
 			local = _push_local_box(local, 0.0, 0.0,
 					v.width * 0.5 + 0.02, v.length * 0.5 + 0.1, 0.28)
-		if feet < 1.08 and head > 0.3:
+		if not skip_body and feet < 1.08 and head > 0.3:
 			# Side skirt / underframe.
 			local = _push_local_box(local, 0.0, 0.0,
 					v.width * 0.5 + 0.01, v.length * 0.5 - 0.25, 0.28)
-		if feet < 1.08 and head > 0.0:
+		if not skip_body and feet < 1.08 and head > 0.0:
 			var bz := v.bogie_spacing * 0.5
 			for zz: float in [-bz, bz]:
 				local = _push_local_box(local, 0.0, zz, 1.18, 2.1, 0.28)
@@ -1062,6 +1121,7 @@ func _update_walk(delta: float) -> void:
 		_cab_walk_step()
 	if not _cab_walk and not _train_walk:
 		_resolve_world_collisions(prev_xz)
+		_try_enter_open_side_door()
 
 	var surface_y := _ground_at(_walk_pos.x, _walk_pos.z)
 	if _train_walk and _walk_vehicle >= 0 and _walk_vehicle < train.vehicles.size():

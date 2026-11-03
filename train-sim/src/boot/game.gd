@@ -1047,7 +1047,7 @@ func _build_vegetation(yield_frames := false) -> void:
 		var key := "conifer" if rng.randf() < 0.62 else "broadleaf"
 		var s := 0.75 + rng.randf() * 0.85
 		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s *(0.85 + rng.randf() * 0.5), s))
-		var item := Transform3D(basis, Vector3(pos.x, y - 0.75, pos.z))
+		var item := Transform3D(basis, Vector3(pos.x, y - 0.45, pos.z))
 		if absf(lateral) < near_range:
 			near [key].append(item)
 		else:
@@ -1079,7 +1079,7 @@ func _build_vegetation(yield_frames := false) -> void:
 			var key := "conifer" if rng.randf() < 0.58 else "broadleaf"
 			var s := 0.85 + rng.randf() * 1.0
 			var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * (0.85 + rng.randf() * 0.5), s))
-			var item := Transform3D(basis, Vector3(pos.x, y - 0.75, pos.z))
+			var item := Transform3D(basis, Vector3(pos.x, y - 0.45, pos.z))
 			if absf(lateral) < near_range:
 				near [key].append(item)
 			else:
@@ -1123,7 +1123,8 @@ func _terrain_normal(x: float, z: float) -> Vector3:
 func _conifer_mesh(far := false) -> ArrayMesh:
 	var items := []
 	items.append([Forge.lathe(PackedVector2Array([
-		Vector2(0.4, 0.0), Vector2(0.3, 1.4), Vector2(0.18, 4.9), Vector2(0.08, 6.5)
+		Vector2(0.56, -0.65), Vector2(0.40, 0.0), Vector2(0.30, 1.4),
+		Vector2(0.18, 4.9), Vector2(0.08, 6.5)
 	]), 8, true), Transform3D()])
 	var needle := Forge.lathe(PackedVector2Array([
 		Vector2(0.0, 0.0), Vector2(0.34, 0.14), Vector2(0.3, 0.5), Vector2(0.16, 1.0), Vector2(0.0, 1.6)
@@ -1153,7 +1154,8 @@ func _conifer_mesh(far := false) -> ArrayMesh:
 func _broadleaf_mesh(far := false) -> ArrayMesh:
 	var items := []
 	var trunk := Forge.lathe(PackedVector2Array([
-		Vector2(0.72, 0.0), Vector2(0.54, 1.7), Vector2(0.34, 4.3), Vector2(0.18, 5.9)
+		Vector2(0.92, -0.70), Vector2(0.72, 0.0), Vector2(0.54, 1.7),
+		Vector2(0.34, 4.3), Vector2(0.18, 5.9)
 	]), 9, true)
 	items.append([trunk, Transform3D()])
 	if far:
@@ -1811,6 +1813,121 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 			ceiling_lights.append([Forge.box(Vector3(1.20, 0.04, 2.9)),
 					Transform3D(Basis(), Vector3(lx, hall_h - 0.36, lz))])
 	_add_merged(bdg, "HallCeilingLights", ceiling_lights, light_mat)
+	# A setback upper storey and a modest clock tower give the hall a civic
+	# silhouette instead of the old single-storey box. Only the exterior is
+	# modelled; the ground-floor ticket hall remains the walkable space.
+	if settlement != "halt":
+		var upper_h := 4.8 if settlement == "city" else 3.5
+		var upper_w := hall_w * (0.72 if settlement == "city" else 0.82)
+		var upper_d := hall_d * (0.64 if settlement == "city" else 0.76)
+		var upper_base := hall_h + 0.28
+		_add_merged(bdg, "HallUpperWalls", [
+			[Forge.box(Vector3(upper_w, upper_h, upper_d)),
+				Transform3D(Basis(), Vector3(0, upper_base + upper_h * 0.5, 0))]
+		], wall_mat)
+		_add_merged(bdg, "HallUpperCornice", [
+			[Forge.box(Vector3(upper_w + 0.8, 0.30, upper_d + 0.8)),
+				Transform3D(Basis(), Vector3(0, upper_base + 0.10, 0))],
+			[Forge.box(Vector3(upper_w + 0.9, 0.38, upper_d + 0.9)),
+				Transform3D(Basis(), Vector3(0, upper_base + upper_h, 0))]
+		], trim_mat)
+		var upper_glass := []
+		for uz: float in [- upper_d * 0.5 - 0.035, upper_d * 0.5 + 0.035]:
+			upper_glass.append([Forge.box(Vector3(upper_w * 0.76, upper_h * 0.34, 0.06)),
+					Transform3D(Basis(), Vector3(0, upper_base + upper_h * 0.58, uz))])
+		for ux: float in [- upper_w * 0.5 - 0.035, upper_w * 0.5 + 0.035]:
+			upper_glass.append([Forge.box(Vector3(0.06, upper_h * 0.34, upper_d * 0.72)),
+					Transform3D(Basis(), Vector3(ux, upper_base + upper_h * 0.58, 0))])
+		_add_merged(bdg, "HallUpperGlazing", upper_glass, glass_mat)
+		_add_merged(bdg, "HallUpperRoof", [
+			[Forge.box(Vector3(upper_w + 1.2, 0.44, upper_d + 1.2)),
+				Transform3D(Basis(), Vector3(0, upper_base + upper_h + 0.22, 0))]
+		], roof_mat)
+		if settlement == "city":
+			var tower_base := upper_base + upper_h + 0.44
+			var tower_h := 8.6
+			_add_merged(bdg, "HallClockTower", [
+				[Forge.box(Vector3(4.8, tower_h, 4.8)),
+					Transform3D(Basis(), Vector3(0, tower_base + tower_h * 0.5, 0))],
+				[Forge.box(Vector3(5.5, 0.35, 5.5)),
+					Transform3D(Basis(), Vector3(0, tower_base + 0.17, 0))]
+			], wall_mat)
+			_add_merged(bdg, "HallClockTowerGlazing", [
+				[Forge.box(Vector3(4.84, 2.2, 0.06)),
+					Transform3D(Basis(), Vector3(0, tower_base + tower_h * 0.66, -2.44))],
+				[Forge.box(Vector3(4.84, 2.2, 0.06)),
+					Transform3D(Basis(), Vector3(0, tower_base + tower_h * 0.66, 2.44))],
+				[Forge.box(Vector3(0.06, 2.2, 4.84)),
+					Transform3D(Basis(), Vector3(-2.44, tower_base + tower_h * 0.66, 0))],
+				[Forge.box(Vector3(0.06, 2.2, 4.84)),
+					Transform3D(Basis(), Vector3(2.44, tower_base + tower_h * 0.66, 0))]
+			], glass_mat)
+			var clock := Gfx.emissive(Color(0.96, 0.94, 0.82), 0.7, Color(0.22, 0.20, 0.16))
+			_add_merged(bdg, "HallClockFaces", [
+				[Forge.box(Vector3(1.85, 1.85, 0.07)),
+					Transform3D(Basis(), Vector3(0, tower_base + tower_h * 0.54, -2.46))],
+				[Forge.box(Vector3(1.85, 1.85, 0.07)),
+					Transform3D(Basis(), Vector3(0, tower_base + tower_h * 0.54, 2.46))]
+			], clock)
+			var tower_roof := Forge.lathe(PackedVector2Array([
+				Vector2(3.4, 0.0), Vector2(1.8, 1.0), Vector2(0.0, 2.4)
+			]), 4, true)
+			var roof_mi := MeshInstance3D.new()
+			roof_mi.name = "HallClockTowerRoof"
+			roof_mi.mesh = tower_roof
+			roof_mi.material_override = roof_mat
+			roof_mi.position = Vector3(0, tower_base + tower_h, 0)
+			roof_mi.rotation.y = deg_to_rad(45.0)
+			bdg.add_child(roof_mi)
+
+	# Ticket machines, seating islands, kiosks and information boards keep
+	# the hall from reading as an empty concrete room.
+	var hall_props := []
+	var shop_props := []
+	var screen_props := []
+	for tz: float in [-10.0, 10.0]:
+		hall_props.append([Forge.box(Vector3(0.62, 1.85, 0.62)),
+				Transform3D(Basis(), Vector3(inner_x + side * 0.55, 0.93, tz))])
+		screen_props.append([Forge.box(Vector3(0.46, 0.42, 0.035)),
+				Transform3D(Basis(), Vector3(inner_x + side * 0.86, 1.30, tz))])
+	for bz: float in [-7.0, 0.0, 7.0]:
+		for bx: float in [-2.7, 2.7]:
+			for k in range(2):
+				hall_props.append([Forge.box(Vector3(1.8, 0.10, 0.54)),
+						Transform3D(Basis(), Vector3(bx, 0.46, bz + float(k) * 0.72))])
+				hall_props.append([Forge.box(Vector3(1.8, 0.46, 0.08)),
+						Transform3D(Basis(), Vector3(bx, 0.70, bz + float(k) * 0.72 - 0.27))])
+	for sz: float in [-15.0, 15.0]:
+		shop_props.append([Forge.box(Vector3(2.2, 2.55, 5.2)),
+				Transform3D(Basis(), Vector3(outer_x - side * 1.55, 1.28, sz))])
+		shop_props.append([Forge.box(Vector3(0.06, 2.05, 4.4)),
+				Transform3D(Basis(), Vector3(outer_x - side * 2.70, 1.34, sz))])
+		screen_props.append([Forge.box(Vector3(1.4, 0.95, 0.04)),
+				Transform3D(Basis(), Vector3(outer_x - side * 2.74, 2.65, sz))])
+	for pz: float in [-4.0, 4.0]:
+		hall_props.append([Forge.cylinder(0.42, 0.62, 12, 0.0, true, true),
+				Transform3D(Basis(), Vector3(-4.6 if pz < 0.0 else 4.6, 0.31, pz))])
+		for lx: float in [-0.20, 0.20]:
+			hall_props.append([Forge.cylinder(0.035, 0.9, 6, 0.0, true, true),
+					Transform3D(Basis(), Vector3(-4.6 + lx if pz < 0.0 else 4.6 + lx, 1.25, pz + lx))])
+	_add_merged(bdg, "HallProps", hall_props, Gfx.interior_panel(Color(0.30, 0.32, 0.34), 0.55))
+	_add_merged(bdg, "HallKiosks", shop_props, Gfx.interior_panel(Color(0.42, 0.38, 0.32), 0.64))
+	_add_merged(bdg, "HallScreens", screen_props, Gfx.emissive(Color(0.24, 0.52, 0.72), 0.75, Color(0.02, 0.04, 0.05)))
+	var depart := MeshInstance3D.new()
+	depart.name = "HallDepartureBoard"
+	depart.mesh = Forge.box(Vector3(6.6, 0.75, 0.12))
+	depart.material_override = Gfx.emissive(Color(0.05, 0.08, 0.12), 0.6, Color(0.01, 0.02, 0.03))
+	depart.position = Vector3(0, hall_h - 1.35, 5.8)
+	bdg.add_child(depart)
+	var depart_label := Label3D.new()
+	depart_label.text = "检票口  A1    B2        候车厅  /  售票厅"
+	depart_label.font_size = 44
+	depart_label.pixel_size = 0.0032
+	depart_label.modulate = Color(0.55, 0.92, 0.72)
+	depart_label.outline_size = 0
+	depart_label.position = Vector3(0, hall_h - 1.35, 5.89)
+	bdg.add_child(depart_label)
+
 	var hall_label := Label3D.new()
 	hall_label.name = "HallName"
 	hall_label.text = station_name

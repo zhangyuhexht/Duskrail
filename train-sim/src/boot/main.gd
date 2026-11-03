@@ -3,7 +3,7 @@ extends Node3D
 
 
 const GAME_NAME := "Duskrail"
-const VERSION := "alpha1.8"
+const VERSION := "alpha1.9"
 const LOADING_SCREEN := preload("res://src/ui/loading_screen.gd")
 
 var shot_path := ""
@@ -1086,6 +1086,26 @@ func _run_walk_test() -> void:
 		rig._cab_walk_step()
 		cab_exit = not rig._cab_walk
 		platform_ok = not rig._platform_at(rig._walk_pos).is_empty()
+	# Walking through an open coach side door must enter the train without
+	# jumping or being pushed to the opposite side.
+	var side_entry := false
+	if not t.vehicles.is_empty():
+		var ev: Vehicle = t.vehicles[0]
+		var emeta := rig._cab_walk_meta(ev)
+		var edz := float(emeta["door_z"])
+		var efloor := float(ev.get_meta("train_walk_floor", 1.2))
+		t.doors_open = true
+		t.door_open_side = 1
+		rig._train_walk = false
+		rig._cab_walk = false
+		rig._walk_vehicle = -1
+		rig._on_foot = true
+		rig._walk_pos = ev.global_transform * Vector3(1.38, efloor, edz)
+		var side_ret: bool = rig._try_enter_open_side_door()
+		side_entry = side_ret and rig._train_walk and rig._walk_vehicle == 0
+		rig._train_walk = false
+		rig._cab_walk = false
+		rig._walk_vehicle = -1
 	t.doors_open = false
 	t.door_open_side = 0
 	# Jump must lift the on-foot body off the platform.
@@ -1132,12 +1152,12 @@ func _run_walk_test() -> void:
 	game._handle_input(0.0)
 	Input.action_release("camera_next")
 	var walk_lock: bool = rig.mode == CameraRig.Mode.WALK
-	print("[walk-test] bridge=%s tunnel=%s a_x=%.2f d_x=%.2f dir=%s space=%s cab=%s cab_exit=%s platform=%s jump=%s platform_col=%s seat_col=%s body_col=%s walk_lock=%s ok=%s" %[
+	print("[walk-test] bridge=%s tunnel=%s a_x=%.2f d_x=%.2f dir=%s space=%s cab=%s cab_exit=%s platform=%s side_entry=%s jump=%s platform_col=%s seat_col=%s body_col=%s walk_lock=%s ok=%s" %[
 		str(bridge_ok), str(tunnel_ok), a_x, d_x, str(dir_ok), str(space_ok),
-		str(cab_ok), str(cab_exit), str(platform_ok), str(jump_ok),
+		str(cab_ok), str(cab_exit), str(platform_ok), str(side_entry), str(jump_ok),
 		str(platform_col), str(seat_ok), str(body_ok), str(walk_lock),
-		str(bridge_ok and tunnel_ok and dir_ok and space_ok and cab_ok and cab_exit and platform_ok and jump_ok and platform_col and seat_ok and body_ok and walk_lock)])
-	get_tree().quit(0 if bridge_ok and tunnel_ok and dir_ok and space_ok and cab_ok and cab_exit and platform_ok and jump_ok and platform_col and seat_ok and body_ok and walk_lock else 1)
+		str(bridge_ok and tunnel_ok and dir_ok and space_ok and cab_ok and cab_exit and platform_ok and side_entry and jump_ok and platform_col and seat_ok and body_ok and walk_lock)])
+	get_tree().quit(0 if bridge_ok and tunnel_ok and dir_ok and space_ok and cab_ok and cab_exit and platform_ok and side_entry and jump_ok and platform_col and seat_ok and body_ok and walk_lock else 1)
 
 
 func _run_train_walk_test() -> void:
@@ -1969,6 +1989,44 @@ func _capture_and_quit() -> void:
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
 				var target := cv.global_transform * Vector3(0.0, 2.6, 0.0)
 				pc.global_position = cv.global_transform * Vector3(-24.0, 4.8, 0.0)
+				pc.look_at(target)
+			elif _qa_part_cam == "coach-side-close":
+				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
+				var target := cv.global_transform * Vector3(0.0, 2.25, 0.0)
+				pc.global_position = cv.global_transform * Vector3(5.4, 2.55, 0.0)
+				pc.look_at(target)
+				if OS.get_cmdline_user_args().has("--hide-band"):
+					for nb: Node in game.train.find_children("WindowBand*", "MeshInstance3D", true, false):
+						(nb as MeshInstance3D).visible = false
+				if OS.get_cmdline_user_args().has("--hide-interior"):
+					for nb: Node in game.train.find_children("Interior*", "MeshInstance3D", true, false):
+						(nb as MeshInstance3D).visible = false
+				if OS.get_cmdline_user_args().has("--hide-glass"):
+					for nb: Node in game.train.find_children("WindowGlass*", "MeshInstance3D", true, false):
+						(nb as MeshInstance3D).visible = false
+				for probe_px: Vector2 in [Vector2(930, 300), Vector2(960, 300), Vector2(990, 300)]:
+					var eye := pc.project_ray_origin(probe_px)
+					var dir := pc.project_ray_normal(probe_px)
+					var hits: Array = []
+					for n: Node in game.train.find_children("*", "MeshInstance3D", true, false):
+						var mi := n as MeshInstance3D
+						if mi == null or not mi.is_visible_in_tree():
+							continue
+						var inv := mi.global_transform.affine_inverse()
+						var hit: Variant = mi.get_aabb().intersects_ray(inv * eye, (inv.basis * dir).normalized())
+						if hit != null:
+							var wp := mi.global_transform * (hit as Vector3)
+							var mat := ""
+							if mi.material_override is StandardMaterial3D:
+								mat = str((mi.material_override as StandardMaterial3D).albedo_color)
+							hits.append([String(mi.name), eye.distance_to(wp), wp, mat])
+					hits.sort_custom(func(a, b): return float(a[1]) < float(b[1]))
+					for i in range(mini(8, hits.size())):
+						print("[coach-side] px=%s hit %s %.2f at %s %s" % [str(probe_px), hits[i][0], float(hits[i][1]), str(hits[i][2]), hits[i][3]])
+			elif _qa_part_cam == "coach-door-close":
+				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
+				var target := cv.global_transform * Vector3(0.0, 2.15, 10.45)
+				pc.global_position = cv.global_transform * Vector3(4.6, 2.45, 9.2)
 				pc.look_at(target)
 			elif _qa_part_cam == "coach-door-in-left":
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
