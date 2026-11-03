@@ -1,0 +1,31 @@
+# Godot
+.godot/
+*.translation
+*.tmp
+*.log
+
+# Build outputs
+build/
+dist/
+train-sim/build/
+*.exe
+*.dll
+*.pck
+*.zip
+
+# Local toolchains and SDKs
+godot/
+godot-rtx/
+streamline-sdk/
+tools/godot/
+tools/innosetup6/
+tools/rcedit-x64.exe
+tools/installer/nsis*
+tools/installer/_syntax_test/
+tools/installer/nsis-npm/
+
+# OS / editor
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/

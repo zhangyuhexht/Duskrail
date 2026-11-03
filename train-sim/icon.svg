@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.35" y2="1">
+      <stop offset="0" stop-color="#08111f"/>
+      <stop offset="0.55" stop-color="#10233d"/>
+      <stop offset="1" stop-color="#1b3657"/>
+    </linearGradient>
+    <linearGradient id="body" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f8fbfe"/>
+      <stop offset="0.46" stop-color="#dbe6f0"/>
+      <stop offset="1" stop-color="#91a8bd"/>
+    </linearGradient>
+    <linearGradient id="band" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2d63d8"/>
+      <stop offset="0.7" stop-color="#1b46a8"/>
+      <stop offset="1" stop-color="#163b8c"/>
+    </linearGradient>
+    <linearGradient id="beam" x1="1" y1="0.5" x2="0" y2="0.5">
+      <stop offset="0" stop-color="#ffe4a0" stop-opacity="0.95"/>
+      <stop offset="0.5" stop-color="#ffc15c" stop-opacity="0.30"/>
+      <stop offset="1" stop-color="#ff9e3c" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="rail" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#5f7892"/>
+      <stop offset="1" stop-color="#263a52"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="128" height="128" rx="28" fill="url(#bg)"/>
+  <rect x="5" y="5" width="118" height="118" rx="24" fill="none" stroke="#8fb6e8" stroke-opacity="0.16"/>
+
+  <!-- dusk sun and glow -->
+  <circle cx="91" cy="38" r="28" fill="#ff9b42" opacity="0.10"/>
+  <circle cx="91" cy="38" r="19" fill="#ff9b42" opacity="0.18"/>
+  <circle cx="91" cy="38" r="11.5" fill="#ffc46b"/>
+  <circle cx="88" cy="34.5" r="6.5" fill="#ffe3a8" opacity="0.75"/>
+
+  <!-- distant ridge line -->
+  <path d="M0 88 L18 76 L34 84 L52 69 L70 82 L88 70 L106 81 L128 72 L128 128 L0 128 Z"
+        fill="#0a1728" opacity="0.95"/>
+
+  <!-- catenary and rails -->
+  <path d="M0 55 L128 50" stroke="#6e86a2" stroke-width="1.1" opacity="0.45"/>
+  <path d="M8 120 L121 108" stroke="url(#rail)" stroke-width="3.4" stroke-linecap="round"/>
+  <path d="M18 126 L124 115" stroke="#203247" stroke-width="2.4" stroke-linecap="round"/>
+  <path d="M22 119 L15 126 M38 117 L31 124 M54 115 L47 122 M70 113 L63 120 M86 111 L79 118 M102 109 L95 116"
+        stroke="#1a2b3e" stroke-width="2.1" stroke-linecap="round"/>
+
+  <!-- locomotive side profile, facing left -->
+  <path d="M16 88 L16 79 Q16 74 23 70 L31 61 Q35 57 45 57 L104 57 Q113 57 113 66 L113 88 Z"
+        fill="url(#body)"/>
+  <path d="M16 74 L16 79 Q16 74 23 70 L31 61 Q35 57 45 57 L104 57 Q113 57 113 66 L113 73 Z"
+        fill="#ffffff" opacity="0.16"/>
+  <rect x="22" y="73.5" width="91" height="8" fill="url(#band)"/>
+  <rect x="22" y="82" width="91" height="2.4" fill="#ff9a3c"/>
+  <path d="M24 89 L112 89 L112 92 L25 92 Z" fill="#22364d"/>
+
+  <!-- cab glazing and body windows -->
+  <path d="M27 69 L33 62 Q35.5 60 41 60 L49 60 L49 70 L27 70 Z" fill="#17304d"/>
+  <rect x="33" y="62.5" width="12" height="5.4" rx="1.2" fill="#7fa8c7" opacity="0.72"/>
+  <rect x="55" y="61.2" width="10" height="7.4" rx="1.2" fill="#17304d"/>
+  <rect x="68" y="61.2" width="10" height="7.4" rx="1.2" fill="#17304d"/>
+  <rect x="81" y="61.2" width="10" height="7.4" rx="1.2" fill="#17304d"/>
+  <rect x="94" y="61.2" width="12" height="7.4" rx="1.2" fill="#17304d"/>
+  <rect x="56" y="62" width="8" height="5.8" rx="0.9" fill="#6e9cbc" opacity="0.45"/>
+  <rect x="69" y="62" width="8" height="5.8" rx="0.9" fill="#6e9cbc" opacity="0.45"/>
+  <rect x="82" y="62" width="8" height="5.8" rx="0.9" fill="#6e9cbc" opacity="0.45"/>
+
+  <!-- headlight and beam -->
+  <path d="M21 73 L-8 58 L-8 88 Z" fill="url(#beam)"/>
+  <circle cx="22.5" cy="73.5" r="3.5" fill="#fff4c9"/>
+  <circle cx="22.5" cy="73.5" r="7" fill="#ffe7a5" opacity="0.18"/>
+
+  <!-- pantograph -->
+  <path d="M60 57 L60 48 L72 48 M60 48 L54 43 M72 48 L80 43"
+        stroke="#d5e1ee" stroke-width="2.1" stroke-linecap="round" fill="none"/>
+  <path d="M50 43 L84 43" stroke="#d5e1ee" stroke-width="1.5" stroke-linecap="round"/>
+
+  <!-- wheels -->
+  <circle cx="40" cy="92" r="6.2" fill="#0b1522"/>
+  <circle cx="40" cy="92" r="3.1" fill="#8da2b7"/>
+  <circle cx="91" cy="92" r="6.2" fill="#0b1522"/>
+  <circle cx="91" cy="92" r="3.1" fill="#8da2b7"/>
+</svg>
