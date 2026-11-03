@@ -1,4 +1,4 @@
-﻿extends RefCounted
+extends RefCounted
 class_name Vehicles
 
 static var _bogie_templates := {}
@@ -582,19 +582,49 @@ static func passenger_coach() -> Vehicle:
 			v.attach(leaf)
 			var panel := MeshInstance3D.new()
 			panel.name = "CoachDoorPanel"
-			# Slightly larger than the shell opening so the closed leaf
-			# overlaps the body on all four edges and leaves no see-through
-			# sliver around the door.
-			panel.mesh = Forge.box(Vector3(1.16, 2.36, 0.08))
+			# Build the leaf as a frame around a real opening instead of a
+			# solid panel with a dark rectangle pasted on it. The upper door
+			# window is therefore see-through from both the saloon and the
+			# platform, and the glass shows the opposite side of the coach.
+			var door_w := 1.16
+			var door_h := 2.36
+			var door_t := 0.08
+			var win_w := 0.66
+			var win_h := 0.58
+			var win_cy := 0.52
+			var win_y0 := win_cy - win_h * 0.5
+			var win_y1 := win_cy + win_h * 0.5
+			var stile_w := (door_w - win_w) * 0.5
+			var bottom_h := win_y0 + door_h * 0.5
+			var top_h := door_h * 0.5 - win_y1
+			var panel_items := []
+			for sz: float in [-1.0, 1.0]:
+				panel_items.append([Forge.box(Vector3(door_t, door_h, stile_w)),
+						Transform3D(Basis(), Vector3(0, 0, sz * (win_w * 0.5 + stile_w * 0.5)))])
+			panel_items.append([Forge.box(Vector3(door_t, bottom_h, door_w)),
+					Transform3D(Basis(), Vector3(0, - door_h * 0.5 + bottom_h * 0.5, 0))])
+			panel_items.append([Forge.box(Vector3(door_t, top_h, door_w)),
+					Transform3D(Basis(), Vector3(0, door_h * 0.5 - top_h * 0.5, 0))])
+			panel.mesh = Forge.merge_all(panel_items)
 			panel.material_override = band_mat
-			panel.transform = Transform3D(rot_side, Vector3.ZERO)
 			leaf.add_child(panel)
 			var door_window := MeshInstance3D.new()
 			door_window.name = "CoachDoorGlass"
-			door_window.mesh = Forge.box(Vector3(0.03, 0.72, 0.78))
+			door_window.mesh = Forge.box(Vector3(0.018, win_h, win_w))
 			door_window.material_override = door_glass
-			door_window.position = Vector3(side * 0.045, 0.66, 0.0)
+			door_window.position = Vector3(side * 0.006, win_cy, 0.0)
 			leaf.add_child(door_window)
+			var win_trim := MeshInstance3D.new()
+			win_trim.name = "CoachDoorWindowFrame"
+			var trim_items := []
+			for wy: float in [win_y0 - 0.018, win_y1 + 0.018]:
+				trim_items.append([Forge.box(Vector3(0.026, 0.036, win_w + 0.10)), Transform3D(Basis(), Vector3(0, wy, 0))])
+			for wz: float in [- win_w * 0.5 - 0.025, win_w * 0.5 + 0.025]:
+				trim_items.append([Forge.box(Vector3(0.026, win_h + 0.06, 0.05)), Transform3D(Basis(), Vector3(0, win_cy, wz))])
+			win_trim.mesh = Forge.merge_all(trim_items)
+			win_trim.material_override = frame_mat
+			win_trim.position = Vector3(side * 0.045, 0, 0)
+			leaf.add_child(win_trim)
 			var door_handle := MeshInstance3D.new()
 			door_handle.name = "CoachDoorHandle"
 			door_handle.mesh = Forge.box(Vector3(0.03, 0.045, 0.10))
@@ -648,7 +678,12 @@ static func passenger_coach() -> Vehicle:
 				Transform3D(Basis(), Vector3(side * 1.558, 3.60, 0)), "UpperSideTrim")
 
 	_passenger_interior(v, half_len, floor_y, roof_y, body_mat, frame_mat)
-	for lz: float in [-8.8, -3.0, 2.6, 8.4]:
+	var lamp_zs := [-8.8, -3.0, 2.6, 8.4]
+	if Config.quality <= Config.Quality.LOW:
+		lamp_zs = [-3.0, 5.2]
+	elif Config.quality == Config.Quality.MEDIUM:
+		lamp_zs = [-8.8, -2.2, 5.0]
+	for lz: float in lamp_zs:
 		var lamp := OmniLight3D.new()
 		lamp.position = Vector3(0, 3.18, lz)
 		lamp.omni_range = 7.6
@@ -772,11 +807,12 @@ static func _passenger_end(v: Vehicle, end: float, half_len: float, floor_y: flo
 			Transform3D(Basis(), Vector3(-1.05, 2.54, z))])
 	wall_items.append([Forge.box(Vector3(1.00, 2.70, 0.08)),
 			Transform3D(Basis(), Vector3(1.05, 2.54, z))])
-	wall_items.append([Forge.box(Vector3(1.10, 0.52, 0.08)),
-			Transform3D(Basis(), Vector3(0, 3.64, z))])
+	wall_items.append([Forge.box(Vector3(1.10, 0.64, 0.08)),
+			Transform3D(Basis(), Vector3(0, 3.68, z))])
 	wall_items.append([Forge.box(Vector3(1.10, 0.04, 0.08)),
 			Transform3D(Basis(), Vector3(0, 1.16, z))])
 	v.merged(wall_items, body_mat, "EndWall")
+	var rubber := Gfx.rubber(Color(0.045, 0.050, 0.055), 0.82)
 
 	var frame_items := []
 	for fx: float in [-0.56, 0.56]:
@@ -786,20 +822,61 @@ static func _passenger_end(v: Vehicle, end: float, half_len: float, floor_y: flo
 			Transform3D(Basis(), Vector3(0, 3.38, z + end * 0.04))])
 	v.merged(frame_items, frame_mat, "EndDoorFrame")
 
+	# A real sealed end door. The leaf overlaps the opening on all four
+	# sides so the tail of the train no longer shows daylight around it,
+	# while the upper window is a genuine opening with transparent glass.
+	var door_w := 1.14
+	var door_h := 2.28
+	var door_t := 0.06
+	var win_w := 0.58
+	var win_h := 0.56
+	var win_cy := 0.48
+	var win_y0 := win_cy - win_h * 0.5
+	var win_y1 := win_cy + win_h * 0.5
+	var stile_w := (door_w - win_w) * 0.5
+	var bottom_h := win_y0 + door_h * 0.5
+	var top_h := door_h * 0.5 - win_y1
+	var door_items := []
+	for sx: float in [-1.0, 1.0]:
+		door_items.append([Forge.box(Vector3(stile_w, door_h, door_t)),
+				Transform3D(Basis(), Vector3(sx * (win_w * 0.5 + stile_w * 0.5), 0, 0))])
+	door_items.append([Forge.box(Vector3(door_w, bottom_h, door_t)),
+			Transform3D(Basis(), Vector3(0, - door_h * 0.5 + bottom_h * 0.5, 0))])
+	door_items.append([Forge.box(Vector3(door_w, top_h, door_t)),
+			Transform3D(Basis(), Vector3(0, door_h * 0.5 - top_h * 0.5, 0))])
 	var door := MeshInstance3D.new()
 	door.name = "EndDoorFront" if end < 0 else "EndDoorRear"
-	door.mesh = Forge.box(Vector3(1.02, 2.18, 0.06))
+	door.mesh = Forge.merge_all(door_items)
 	door.material_override = band_mat
 	door.transform = Transform3D(Basis(), Vector3(0, 2.28, z + end * 0.07))
 	v.attach(door)
 	var win := MeshInstance3D.new()
 	win.name = "EndDoorWindow"
-	win.mesh = Forge.box(Vector3(0.62, 0.62, 0.018))
+	win.mesh = Forge.box(Vector3(win_w, win_h, 0.018))
 	win.material_override = Gfx.glass(Color(0.10, 0.16, 0.22), 0.04, 0.28)
-	win.position = Vector3(0, 0.52, end * 0.04)
+	win.position = Vector3(0, win_cy, 0)
 	door.add_child(win)
+	var win_frame := MeshInstance3D.new()
+	win_frame.name = "EndDoorWindowFrame"
+	var win_frame_items := []
+	for fy: float in [win_y0 - 0.022, win_y1 + 0.022]:
+		win_frame_items.append([Forge.box(Vector3(win_w + 0.12, 0.044, door_t + 0.02)),
+				Transform3D(Basis(), Vector3(0, fy, 0))])
+	for fx: float in [- win_w * 0.5 - 0.03, win_w * 0.5 + 0.03]:
+		win_frame_items.append([Forge.box(Vector3(0.06, win_h + 0.08, door_t + 0.02)),
+				Transform3D(Basis(), Vector3(fx, win_cy, 0))])
+	win_frame.mesh = Forge.merge_all(win_frame_items)
+	win_frame.material_override = frame_mat
+	door.add_child(win_frame)
+	# Rubber seal around the doorway, mounted on the end wall rather than
+	# on the moving leaf. It closes the last few millimetres at the tail.
+	for sy: float in [1.16, 3.40]:
+		v.part(Forge.box(Vector3(1.20, 0.055, 0.055)), rubber,
+				Transform3D(Basis(), Vector3(0, sy, z + end * 0.025)), "EndDoorSeal")
+	for sx: float in [-0.59, 0.59]:
+		v.part(Forge.box(Vector3(0.055, 2.28, 0.055)), rubber,
+				Transform3D(Basis(), Vector3(sx, 2.28, z + end * 0.025)), "EndDoorSeal")
 
-	var rubber := Gfx.rubber(Color(0.045, 0.050, 0.055), 0.82)
 	var bellows := []
 	# A 0.82 m reach per car closes the coupling gap without poking into
 	# the next body. The side and roof sleeves keep the passage dark and
@@ -3624,7 +3701,7 @@ static func freight_cab_interior(v: Vehicle, y_floor: float, z_front: float, z_b
 	var seat_z := front + 1.65
 	var desk_z := front + 0.78
 	var top_y := y_floor + 2.3
-	var door_z := -4.35
+	var door_z := -5.55
 	var door_half := 0.50
 	var wall_segments := [
 		[front, door_z - door_half],
@@ -3648,8 +3725,8 @@ static func freight_cab_interior(v: Vehicle, y_floor: float, z_front: float, z_b
 					Transform3D(Basis(), Vector3(side * (hw_in - 0.025), y_floor + 1.17, (za + zb) * 0.5)), "CabWindowSill")
 			v.part(Forge.box(Vector3(0.11, 0.07, zb - za)), trim,
 					Transform3D(Basis(), Vector3(side * (hw_in - 0.025), y_floor + 2.34, (za + zb) * 0.5)), "CabWindowHeader")
-		var win_z := front + 2.95
-		var win_half := 1.35
+		var win_z := front + 2.25
+		var win_half := 1.15
 		var upper_y := y_floor + 2.30
 		var upper_h := 0.34
 		v.part(Forge.box(Vector3(0.075, upper_h, win_z - win_half - front)), wall_upper,
@@ -3795,15 +3872,43 @@ static func freight_cab_interior(v: Vehicle, y_floor: float, z_front: float, z_b
 	console_edge.albedo_color = Color(0.028, 0.031, 0.036)
 	var lcd_face := StandardMaterial3D.new()
 	lcd_face.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	lcd_face.albedo_color = Color(0.032, 0.075, 0.088)
+	lcd_face.albedo_color = Color(0.045, 0.145, 0.175)
 	v.part(Forge.box(Vector3(1.66, 0.46, 0.06)), console_black, panel, "CabPanel")
 	v.part(Forge.box(Vector3(1.72, 0.50, 0.016)), console_edge,
 			panel * Transform3D(Basis(), Vector3(0, 0, -0.032)), "CabPanelBezel")
 	# LCD in the middle, two primary controls on the left, secondary buttons on the right.
 	v.part(Forge.box(Vector3(0.62, 0.40, 0.018)), console_edge,
-			panel * Transform3D(Basis(), Vector3(-0.20, 0.0, 0.032)), "CabDisplayBezel")
+			panel * Transform3D(Basis(), Vector3(-0.32, 0.0, 0.032)), "CabDisplayBezel")
 	v.part(Forge.box(Vector3(0.54, 0.32, 0.010)), lcd_face,
-			panel * Transform3D(Basis(), Vector3(-0.20, 0.0, 0.045)), "CabDisplayScreen")
+			panel * Transform3D(Basis(), Vector3(-0.32, 0.0, 0.045)), "CabDisplayScreen")
+	# Autopilot and high-beam are grouped on a small panel immediately to the
+	# left of the main instrument display, where the driver can reach them
+	# without taking their eyes off the desk.
+	var aux_panel := Transform3D(Basis(Vector3.RIGHT, deg_to_rad(-24.0)),
+			Vector3(-1.05, y_floor + 1.18, desk_z - 0.04))
+	v.part(Forge.box(Vector3(0.31, 0.46, 0.05)), console_black, aux_panel, "CabAuxPanel")
+	v.part(Forge.box(Vector3(0.34, 0.49, 0.014)), console_edge,
+			aux_panel * Transform3D(Basis(), Vector3(0, 0, -0.028)), "CabAuxPanelBezel")
+	for ab in [
+		["autopilot", 0.10, Color(0.20, 0.52, 0.94)],
+		["high_beam", -0.10, Color(0.94, 0.78, 0.24)],
+	]:
+		var abp := Vector3(-0.055, float(ab [1]), 0.040)
+		v.part(Forge.cylinder(0.045, 0.020, 16, 0.0, true, true), trim,
+				aux_panel * Transform3D(Basis(Vector3.RIGHT, PI * 0.5), abp), "CabButtonBase")
+		v.part(Forge.cylinder(0.033, 0.017, 16, 0.0, true, true),
+				Gfx.paint(ab [2], 0.35, 0.25, 0.55),
+				aux_panel * Transform3D(Basis(Vector3.RIGHT, PI * 0.5), abp + Vector3(0, 0, 0.013)),
+				"Dev_" + String(ab [0]))
+		var albl := Label3D.new()
+		albl.name = "CabAuxLabel"
+		albl.text = "自驾" if String(ab [0]) == "autopilot" else "远光"
+		albl.font_size = 17
+		albl.pixel_size = 0.0010
+		albl.modulate = Color(0.82, 0.90, 0.94)
+		albl.outline_size = 0
+		albl.transform = aux_panel * Transform3D(Basis(), Vector3(0.075, float(ab [1]), 0.038))
+		v.attach(albl)
 	var primary_buttons := [
 		["battery", -0.72, 0.11, green],
 		["park_brake", -0.72, -0.11, red],
@@ -3939,11 +4044,12 @@ static func freight_cab_interior(v: Vehicle, y_floor: float, z_front: float, z_b
 	var speed_display := Label3D.new()
 	speed_display.name = "CabSpeedDisplay"
 	speed_display.text = "0"
-	speed_display.font_size = 52
+	speed_display.font_size = 64
 	speed_display.pixel_size = 0.0014
-	speed_display.modulate = Color(0.46, 1.0, 0.74)
-	speed_display.outline_size = 0
-	speed_display.transform = panel * Transform3D(Basis(), Vector3(-0.20, 0.025, 0.055))
+	speed_display.modulate = Color(0.55, 1.0, 0.80)
+	speed_display.outline_size = 8
+	speed_display.outline_modulate = Color(0.01, 0.04, 0.05)
+	speed_display.transform = panel * Transform3D(Basis(), Vector3(-0.32, 0.025, 0.055))
 	v.attach(speed_display)
 	v.cab_parts ["speed_label"] = speed_display
 	var unit := Label3D.new()
@@ -3953,7 +4059,7 @@ static func freight_cab_interior(v: Vehicle, y_floor: float, z_front: float, z_b
 	unit.pixel_size = 0.0011
 	unit.modulate = Color(0.55, 0.9, 0.76)
 	unit.outline_size = 0
-	unit.transform = panel * Transform3D(Basis(), Vector3(-0.20, -0.13, 0.055))
+	unit.transform = panel * Transform3D(Basis(), Vector3(-0.32, -0.13, 0.055))
 	v.attach(unit)
 	for dside: float in [-1.0, 1.0]:
 		var swx := dside * (hw_in - 0.08)
@@ -4739,7 +4845,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 	var shell_cuts := [
 		Vector4(2.32, 3.38, -1000.0, 1000.0),
 		# The Carbody extrusion is local Z 0..2*half_len (world -half_len..+half_len).
-		Vector4(1.26, 3.66, half_len - 4.85, half_len - 3.85),
+		Vector4(1.26, 3.66, half_len - 6.05, half_len - 4.55),
 		# Front cab side glazing right behind the windscreen. The interior
 		# panel already exists; the outer shell has to be opened as well or
 		# the glass is only visible from inside.
@@ -4967,7 +5073,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 					Transform3D(Basis(), Vector3(side * 1.565, 2.62, fwz + dz)), "FrontSideWindowFrame")
 		v.part(Forge.box(Vector3(0.018, 0.96, 1.08)), side_glass_mat,
 				Transform3D(Basis(), Vector3(side * 1.578, 2.62, fwz)), "FrontSideWindow")
-		for wz: float in [-7.35, -5.85]:
+		for wz: float in [-7.35]:
 			var fx := side * 1.565
 			for dy: float in [-0.535, 0.535]:
 				v.part(Forge.box(Vector3(0.028, 0.09, 1.28)), frame_mat,
@@ -4988,7 +5094,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 			for fy: float in [-0.76, 0.76]:
 				v.part(Forge.box(Vector3(2.42, 0.06, 0.03)), frame_mat,
 						Transform3D(srot, Vector3(side * 1.59, 2.93 + fy, lz)), "LouvreFrame")
-		for dz: float in [-4.35]:
+		for dz: float in [-5.55]:
 			for fz: float in [-0.45, 0.45]:
 				v.part(Forge.box(Vector3(0.06, 2.34, 0.06)), frame_mat,
 						Transform3D(Basis(), Vector3(side * 1.565, 2.47, dz + fz)), "CabDoorFrame")
@@ -5005,9 +5111,30 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 			leaf.name = "CabDoorLeaf"
 			leaf.position = Vector3(side * 1.575, 2.52, dz + 0.43)
 			v.attach(leaf)
+			# Hollow door leaf: the upper window is a real opening, so it is
+			# transparent from both inside the cab and the platform.
+			var door_w := 1.04
+			var door_h := 2.28
+			var door_t := 0.04
+			var win_w := 0.50
+			var win_h := 0.50
+			var win_cy := 0.55
+			var win_y0 := win_cy - win_h * 0.5
+			var win_y1 := win_cy + win_h * 0.5
+			var stile_w := (door_w - win_w) * 0.5
+			var bottom_h := win_y0 + door_h * 0.5
+			var top_h := door_h * 0.5 - win_y1
+			var panel_items := []
+			for sz: float in [-1.0, 1.0]:
+				panel_items.append([Forge.box(Vector3(door_t, door_h, stile_w)),
+						Transform3D(Basis(), Vector3(0, 0, sz * (win_w * 0.5 + stile_w * 0.5)))])
+			panel_items.append([Forge.box(Vector3(door_t, bottom_h, door_w)),
+					Transform3D(Basis(), Vector3(0, - door_h * 0.5 + bottom_h * 0.5, 0))])
+			panel_items.append([Forge.box(Vector3(door_t, top_h, door_w)),
+					Transform3D(Basis(), Vector3(0, door_h * 0.5 - top_h * 0.5, 0))])
 			var panel := MeshInstance3D.new()
 			panel.name = "CabDoorPanel"
-			panel.mesh = Forge.box(Vector3(0.04, 2.28, 0.86))
+			panel.mesh = Forge.merge_all(panel_items)
 			panel.material_override = body_mat
 			panel.position = Vector3(0.0, 0.0, -0.43)
 			leaf.add_child(panel)
@@ -5015,29 +5142,35 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 			panel_edge.name = "CabDoorEdge"
 			panel_edge.mesh = Forge.box(Vector3(0.045, 2.34, 0.06))
 			panel_edge.material_override = frame_mat
-			panel_edge.position = Vector3(0.0, 0.0, -0.86)
+			panel_edge.position = Vector3(0.0, 0.0, -0.95)
 			leaf.add_child(panel_edge)
-			var window_back := MeshInstance3D.new()
-			window_back.name = "CabDoorWindowBack"
-			window_back.mesh = Forge.box(Vector3(0.006, 0.62, 0.64))
-			window_back.material_override = Gfx.interior_panel(Color(0.27, 0.31, 0.35), 0.58)
-			window_back.position = Vector3(side * 0.021, 0.55, -0.43)
-			leaf.add_child(window_back)
 			# Trim the inner face of the lower door panel so the opposite
 			# (closed) cab door no longer reads as a white board when the
 			# platform-side door is open.
 			var inner_panel := MeshInstance3D.new()
 			inner_panel.name = "CabDoorInnerPanel"
-			inner_panel.mesh = Forge.box(Vector3(0.012, 1.30, 0.84))
+			inner_panel.mesh = Forge.box(Vector3(0.012, 1.22, 0.80))
 			inner_panel.material_override = Gfx.interior_panel(Color(0.26, 0.29, 0.32), 0.55)
-			inner_panel.position = Vector3(-side * 0.034, -0.45, -0.43)
+			inner_panel.position = Vector3(-side * 0.034, -0.51, -0.43)
 			leaf.add_child(inner_panel)
 			var door_window := MeshInstance3D.new()
 			door_window.name = "CabDoorWindow"
-			door_window.mesh = Forge.box(Vector3(0.03, 0.62, 0.64))
+			door_window.mesh = Forge.box(Vector3(0.016, win_h, win_w))
 			door_window.material_override = side_glass_mat
-			door_window.position = Vector3(side * 0.025, 0.47, -0.43)
+			door_window.position = Vector3(0.0, win_cy, -0.43)
 			leaf.add_child(door_window)
+			var door_win_frame := MeshInstance3D.new()
+			door_win_frame.name = "CabDoorWindowFrame"
+			var frame_items := []
+			for fy: float in [win_y0 - 0.02, win_y1 + 0.02]:
+				frame_items.append([Forge.box(Vector3(0.026, 0.04, win_w + 0.08)),
+						Transform3D(Basis(), Vector3(0, fy, -0.43))])
+			for fz: float in [- win_w * 0.5 - 0.02, win_w * 0.5 + 0.02]:
+				frame_items.append([Forge.box(Vector3(0.026, win_h + 0.06, 0.04)),
+						Transform3D(Basis(), Vector3(0, win_cy, -0.43 + fz))])
+			door_win_frame.mesh = Forge.merge_all(frame_items)
+			door_win_frame.material_override = frame_mat
+			leaf.add_child(door_win_frame)
 			var door_stripe := MeshInstance3D.new()
 			door_stripe.name = "CabDoorStripe"
 			door_stripe.mesh = Forge.box(Vector3(0.012, 0.24, 0.86))
@@ -5064,7 +5197,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 			v.door_leaves.append(leaf)
 		var step_items := []
 		var step_edges := []
-		for sz: float in [-4.35]:
+		for sz: float in [-5.55]:
 			step_items.append([Forge.box(Vector3(0.52, 0.055, 0.58)), Transform3D(Basis(), Vector3(side * 1.62, 0.62, sz))])
 			step_items.append([Forge.box(Vector3(0.52, 0.055, 0.58)), Transform3D(Basis(), Vector3(side * 1.62, 0.92, sz))])
 			step_edges.append([Forge.box(Vector3(0.05, 0.06, 0.58)), Transform3D(Basis(), Vector3(side * 1.82, 0.65, sz))])
@@ -5087,7 +5220,7 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 	for side: float in [-1.0, 1.0]:
 		# Split the side handrail around the cab door opening so it does not
 		# bridge the cut-out when the door is open.
-		for rail_seg: Array in [[- front + 0.25, -4.95], [-3.75, front - 0.25]]:
+		for rail_seg: Array in [[- front + 0.25, -6.05], [-5.05, front - 0.25]]:
 			rail_items.append(Forge.tube_between(
 					Vector3(side * 1.6, 2.32, float(rail_seg[0])),
 					Vector3(side * 1.6, 2.32, float(rail_seg[1])), 0.022, 6))
@@ -5127,6 +5260,22 @@ static func freight_loco(engine_id := "standard", skin_id := "classic", transmis
 	light_r.rotation_degrees = Vector3(-0.6, 0, 0)
 	v.attach(light_r)
 	v.head_lights.append(light_r)
+	# Dedicated long-range high-beam projectors. They are toggled separately
+	# from the marker/head lamps and only burn when the main headlights are on.
+	for hx: float in [-1.08, 1.08]:
+		var high := SpotLight3D.new()
+		high.name = "HighBeam"
+		high.position = Vector3(hx, 2.05, - front - 0.14)
+		high.light_color = Color(0.92, 0.96, 1.0)
+		high.light_energy = 62.0
+		high.spot_range = 620.0
+		high.spot_angle = 12.5
+		high.spot_attenuation = 0.38
+		high.rotation_degrees = Vector3(-1.2, 0.0, 0.0)
+		high.shadow_enabled = false
+		high.set_meta("high_beam", true)
+		v.attach(high)
+		v.head_lights.append(high)
 	_fill_light(v, Vector3(0.0, 1.45, - front - 0.05), Color(1.0, 0.95, 0.84))
 
 	freight_cab_interior(v, 1.16, - front + 0.05, - front + 6.05, 1.5, -0.72)
@@ -5755,18 +5904,32 @@ static func _loco_rear_interior(v: Vehicle, floor_y: float, roof_y: float,
 	# so it reads as a continuous floor rather than a dark hole.
 	v.part(Forge.box(Vector3(1.10, 0.02, 0.55)), Gfx.carpet(Color(0.24, 0.25, 0.26)),
 			Transform3D(Basis(), Vector3(0.75, floor_y + 0.105, 6.85)), "RearCabThreshold")
-	var seat_mat := Gfx.leather(Color(0.16, 0.20, 0.31), 0.48)
-	v.part(Forge.box(Vector3(0.46, 0.12, 0.50)), seat_mat,
-			Transform3D(Basis(), Vector3(0.18, 1.55, 8.30)), "RearCabSeat")
-	v.part(Forge.box(Vector3(0.42, 0.55, 0.12)), seat_mat,
-			Transform3D(Basis(Vector3.RIGHT, deg_to_rad(8.0)), Vector3(0.18, 1.86, 8.55)), "RearCabSeatBack")
-	v.part(Forge.box(Vector3(0.90, 0.34, 0.30)), Gfx.interior_panel(Color(0.22, 0.24, 0.26), 0.55),
-			Transform3D(Basis(), Vector3(-0.48, 1.45, 8.70)), "RearCabConsole")
+	# The rear shunting cab is a standing cab: keep the centre of the
+	# compartment and the doorway into the train clear. Controls are folded
+	# into a narrow desk against the left wall instead of a loose seat in the
+	# middle of the tail.
+	var desk_mat := Gfx.interior_panel(Color(0.22, 0.24, 0.26), 0.55)
+	v.part(Forge.box(Vector3(0.52, 0.10, 0.62)), desk_mat,
+			Transform3D(Basis(), Vector3(-1.08, floor_y + 1.03, 8.55)), "RearCabDesk")
+	v.part(Forge.box(Vector3(0.46, 0.50, 0.06)), desk_mat,
+			Transform3D(Basis(), Vector3(-1.08, floor_y + 0.78, 8.85)), "RearCabDeskFront")
+	v.part(Forge.box(Vector3(0.16, 0.26, 0.12)), Gfx.metal(Color(0.18, 0.19, 0.21), 0.5, 0.55),
+			Transform3D(Basis(), Vector3(-1.03, floor_y + 1.17, 8.42)), "RearCabBrakeValve")
+	v.part(Forge.cylinder(0.035, 0.20, 8, 0.0, true, true), dark_mat,
+			Transform3D(Basis(Vector3.RIGHT, deg_to_rad(22.0)), Vector3(-1.03, floor_y + 1.30, 8.42)), "RearCabBrakeHandle")
 	v.part(Forge.box(Vector3(0.56, 0.03, 1.10)), Gfx.emissive(Color(1.0, 0.95, 0.86), 0.85, Color(0.62, 0.58, 0.50)),
 			Transform3D(Basis(), Vector3(0.20, roof_y - 0.20, 8.0)), "RearCabLight")
+	for hz: float in [7.45, 9.10]:
+		v.part(Forge.cylinder(0.018, 1.9, 8, 0.0, true, true), frame_mat,
+				Transform3D(Basis(), Vector3(0.42, floor_y + 0.98, hz)), "RearCabGrabRail")
 	v.part(Forge.box(Vector3(1.04, 0.04, 0.42)), Gfx.metal(Color(0.18, 0.19, 0.21), 0.55, 0.5),
 			Transform3D(Basis(), Vector3(0, floor_y + 0.05, 9.45)), "RearCabDoorSill")
-	for lamp_z: float in [-1.5, 2.5, 6.2, 7.0, 8.0]:
+	var rear_lamp_zs := [-1.5, 2.5, 6.2, 7.0, 8.0]
+	if Config.quality <= Config.Quality.LOW:
+		rear_lamp_zs = [2.5, 7.0]
+	elif Config.quality == Config.Quality.MEDIUM:
+		rear_lamp_zs = [2.5, 6.2, 8.0]
+	for lamp_z: float in rear_lamp_zs:
 		var lamp := OmniLight3D.new()
 		lamp.position = Vector3(0.35, 3.10, lamp_z)
 		lamp.omni_range = 5.4 if lamp_z < 7.0 else 4.2
@@ -5775,7 +5938,8 @@ static func _loco_rear_interior(v: Vehicle, floor_y: float, roof_y: float,
 		lamp.shadow_enabled = false
 		v.attach(lamp)
 	# Low fill lights: engine-room floor and rear-cab doorway threshold.
-	for fill_z: float in [5.0, 6.9]:
+	var fill_zs := [5.0, 6.9] if Config.quality > Config.Quality.LOW else [6.9]
+	for fill_z: float in fill_zs:
 		var fill := OmniLight3D.new()
 		fill.position = Vector3(0.75, 1.95, fill_z)
 		fill.omni_range = 2.4
@@ -5866,9 +6030,15 @@ static func _add_loco_parts(v: Vehicle, parts: Array, front: float, roof_y: floa
 		var cut_bot_out := 8.90
 		var z_end := 9.58
 		# Side elevation of the skirt: a continuous lower valance with
-		# earlier/longer trapezoidal bogie cut-outs.
+		# earlier/longer trapezoidal bogie cut-outs and a clean recess under
+		# the cab door so the step and doorway read properly.
+		var door_z0 := -6.10
+		var door_z1 := -5.00
+		var door_notch_y := 0.62
 		var skirt_profile := PackedVector2Array([
-			Vector2(-z_end, y_top), Vector2(z_end, y_top), Vector2(z_end, y_bot),
+			Vector2(-z_end, y_top), Vector2(door_z0, y_top),
+			Vector2(door_z0, door_notch_y), Vector2(door_z1, door_notch_y),
+			Vector2(door_z1, y_top), Vector2(z_end, y_top), Vector2(z_end, y_bot),
 			Vector2(cut_bot_out, y_bot), Vector2(cut_top_out, y_lip),
 			Vector2(cut_top_in, y_lip), Vector2(cut_bot_in, y_bot),
 			Vector2(-cut_bot_in, y_bot), Vector2(-cut_top_in, y_lip),
@@ -5908,8 +6078,20 @@ static func _add_loco_parts(v: Vehicle, parts: Array, front: float, roof_y: floa
 				var tilt := Basis(Vector3.RIGHT, atan2(z1 - z0, y1 - y0))
 				v.part(Forge.box(Vector3(0.008, length + 0.02, 0.04)), skirt_edge,
 						Transform3D(tilt, mid), "SideSkirtEdgeSlope")
-			v.part(Forge.box(Vector3(0.012, 0.04, z_end * 2.0)), steel,
-					Transform3D(Basis(), Vector3(side * (side_x + 0.002), y_top, 0)), "SideSkirtTop")
+			for top_seg: Array in [[-z_end, door_z0], [door_z1, z_end]]:
+				var ta := float(top_seg[0])
+				var tb := float(top_seg[1])
+				v.part(Forge.box(Vector3(0.012, 0.04, tb - ta)), steel,
+						Transform3D(Basis(), Vector3(side * (side_x + 0.002), y_top, (ta + tb) * 0.5)),
+						"SideSkirtTop")
+			# Edge returns around the cab-door recess.
+			for nz: float in [door_z0, door_z1]:
+				v.part(Forge.box(Vector3(0.012, y_top - door_notch_y, 0.05)), skirt_edge,
+						Transform3D(Basis(), Vector3(side * (side_x + 0.002),
+								(y_top + door_notch_y) * 0.5, nz)), "SideSkirtDoorRecess")
+			v.part(Forge.box(Vector3(0.012, 0.05, door_z1 - door_z0 + 0.04)), skirt_edge,
+					Transform3D(Basis(), Vector3(side * (side_x + 0.002), door_notch_y,
+							(door_z0 + door_z1) * 0.5)), "SideSkirtDoorRecess")
 			for ez: float in [-z_end, z_end]:
 				v.part(Forge.box(Vector3(0.006, y_top - y_bot, 0.06)), skirt_mat,
 						Transform3D(Basis(), Vector3(side * (side_x + 0.002), (y_top + y_bot) * 0.5, ez)), "SideSkirtEndCap")

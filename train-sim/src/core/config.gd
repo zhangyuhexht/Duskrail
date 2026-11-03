@@ -27,17 +27,17 @@ static var quality: int = Quality.HIGH
 static func route_loop() -> Array:
 	var pts: Array = []
 	var n := 64
-	# Keep the scenic shape, but trim the loop slightly. 1.72 brings the
-	# total length to roughly 89 km so station intervals are a little
-	# shorter without crowding the existing landmarks.
-	var plan_scale := 1.72
+	# Compact five-station map. The horizontal and vertical scales are reduced
+	# together so the ruling grades stay close to the original route instead
+	# of becoming unrealistically steep on the shorter loop.
+	var plan_scale := 0.55
 	for i in range(n):
 		var a := TAU * float(i) / float(n)
 		var r := 7800.0 + 900.0 * sin(a * 3.0 + 0.35) + 520.0 * sin(a * 5.0 + 2.1)
 		r += 260.0 * cos(a * 7.0 + 0.9) + 120.0 * sin(a * 11.0 + 1.7)
 		var x := cos(a) * r * 1.03 * plan_scale
 		var z := sin(a) * r * 0.94 * plan_scale
-		var y := 48.0 + 24.0 * sin(a * 2.0 + 0.4) + 14.0 * sin(a * 5.0 + 2.2) + 6.0 * cos(a * 9.0 + 0.7)
+		var y := 30.0 + (24.0 * sin(a * 2.0 + 0.4) + 14.0 * sin(a * 5.0 + 2.2) + 6.0 * cos(a * 9.0 + 0.7)) * plan_scale
 		pts.append(Vector3(x, y, z))
 	return pts
 
@@ -82,93 +82,33 @@ static func test_track() -> Array:
 const STATIONS := [
 	{
 		"id": "shanchuan", "name": "山川站", "name_en": "Shanchuan",
-		"frac": 0.0000, "platform_len": 320.0, "freight": false,
-		"settlement": "city", "settlement_side": -1.0, "population": 168000,
+		"frac": 0.0000, "platform_len": 360.0, "freight": false,
+		"settlement": "city", "settlement_side": -1.0, "population": 188000,
+		"urban_radius": 760.0, "urban_offset": 430.0,
 	},
 	{
 		"id": "linjiang", "name": "临江站", "name_en": "Linjiang",
-		"frac": 0.0556, "platform_len": 280.0, "freight": true,
-		"settlement": "town", "settlement_side": 1.0, "population": 23000,
-	},
-	{
-		"id": "hegu", "name": "河谷站", "name_en": "Hegu",
-		"frac": 0.1111, "platform_len": 240.0, "freight": true,
-		"settlement": "town", "settlement_side": -1.0, "population": 18000,
-	},
-	{
-		"id": "yunling", "name": "云岭站", "name_en": "Yunling",
-		"frac": 0.1667, "platform_len": 220.0, "freight": false,
-		"settlement": "town", "settlement_side": 1.0, "population": 12000,
+		"frac": 0.2000, "platform_len": 300.0, "freight": true,
+		"settlement": "town", "settlement_side": 1.0, "population": 26000,
+		"urban_radius": 380.0, "urban_offset": 300.0,
 	},
 	{
 		"id": "qingchuan", "name": "青川站", "name_en": "Qingchuan",
-		"frac": 0.2222, "platform_len": 320.0, "freight": true,
-		"settlement": "city", "settlement_side": -1.0, "population": 142000,
-	},
-	{
-		"id": "zhuhai", "name": "竹海站", "name_en": "Zhuhai",
-		"frac": 0.2778, "platform_len": 220.0, "freight": false,
-		"settlement": "halt", "settlement_side": 1.0, "population": 5600,
-	},
-	{
-		"id": "songlin", "name": "松林站", "name_en": "Songlin",
-		"frac": 0.3333, "platform_len": 220.0, "freight": true,
-		"settlement": "town", "settlement_side": -1.0, "population": 9000,
-	},
-	{
-		"id": "hupan", "name": "湖畔站", "name_en": "Hupan",
-		"frac": 0.3889, "platform_len": 220.0, "freight": false,
-		"settlement": "town", "settlement_side": 1.0, "population": 14000,
-	},
-	{
-		"id": "jiangwan", "name": "江湾站", "name_en": "Jiangwan",
-		"frac": 0.4444, "platform_len": 240.0, "freight": true,
-		"settlement": "town", "settlement_side": -1.0, "population": 16000,
-	},
-	{
-		"id": "bailu", "name": "白鹿站", "name_en": "Bailu",
-		"frac": 0.5000, "platform_len": 220.0, "freight": false,
-		"settlement": "halt", "settlement_side": 1.0, "population": 4200,
+		"frac": 0.4000, "platform_len": 380.0, "freight": true,
+		"settlement": "city", "settlement_side": -1.0, "population": 152000,
+		"urban_radius": 820.0, "urban_offset": 400.0,
 	},
 	{
 		"id": "yangui", "name": "雁归站", "name_en": "Yangui",
-		"frac": 0.5556, "platform_len": 240.0, "freight": false,
-		"settlement": "town", "settlement_side": -1.0, "population": 11000,
-	},
-	{
-		"id": "shimen", "name": "石门站", "name_en": "Shimen",
-		"frac": 0.6111, "platform_len": 260.0, "freight": true,
-		"settlement": "halt", "settlement_side": 1.0, "population": 6200,
-	},
-	{
-		"id": "xinghu", "name": "星湖站", "name_en": "Xinghu",
-		"frac": 0.6667, "platform_len": 220.0, "freight": false,
-		"settlement": "halt", "settlement_side": -1.0, "population": 5100,
-	},
-	{
-		"id": "nanling", "name": "南岭站", "name_en": "Nanling",
-		"frac": 0.7222, "platform_len": 220.0, "freight": true,
-		"settlement": "halt", "settlement_side": 1.0, "population": 3800,
-	},
-	{
-		"id": "fengqiao", "name": "枫桥站", "name_en": "Fengqiao",
-		"frac": 0.7778, "platform_len": 220.0, "freight": false,
-		"settlement": "halt", "settlement_side": -1.0, "population": 4800,
-	},
-	{
-		"id": "yunxi", "name": "云溪站", "name_en": "Yunxi",
-		"frac": 0.8333, "platform_len": 220.0, "freight": false,
-		"settlement": "halt", "settlement_side": 1.0, "population": 4600,
-	},
-	{
-		"id": "wangjiang", "name": "望江站", "name_en": "Wangjiang",
-		"frac": 0.8889, "platform_len": 240.0, "freight": true,
-		"settlement": "halt", "settlement_side": -1.0, "population": 5400,
+		"frac": 0.6000, "platform_len": 280.0, "freight": false,
+		"settlement": "town", "settlement_side": 1.0, "population": 13000,
+		"urban_radius": 360.0, "urban_offset": 280.0,
 	},
 	{
 		"id": "qingshi", "name": "青石站", "name_en": "Qingshi",
-		"frac": 0.9444, "platform_len": 240.0, "freight": true,
-		"settlement": "halt", "settlement_side": 1.0, "population": 5900,
+		"frac": 0.8000, "platform_len": 280.0, "freight": false,
+		"settlement": "town", "settlement_side": -1.0, "population": 9500,
+		"urban_radius": 340.0, "urban_offset": 260.0,
 	},
 ]
 
@@ -189,36 +129,35 @@ const SIDING := {
 const SIDINGS := [
 	{"id": "linjiang", "station": 1, "offset": -4.6,
 		"begin": -330.0, "end": 250.0, "blend": 46.0, "name": "临江侧线", "sign": "L"},
-	{"id": "qingchuan_1", "station": 4, "offset": 4.8,
-		"begin": -300.0, "end": 340.0, "blend": 52.0, "name": "青川车场 1 道", "sign": "1"},
-	{"id": "qingchuan_2", "station": 4, "offset": 8.9,
-		"begin": -300.0, "end": 340.0, "blend": 52.0, "name": "青川车场 2 道", "sign": "2"},
-	{"id": "qingchuan_3", "station": 4, "offset": 13.0,
-		"begin": -300.0, "end": 340.0, "blend": 52.0, "name": "青川车场 3 道", "sign": "3"},
-	{"id": "yangui", "station": 10, "offset": 4.6,
+	{"id": "qingchuan_1", "station": 2, "offset": 4.8,
+		"begin": -320.0, "end": 340.0, "blend": 52.0, "name": "青川车场 1 道", "sign": "1"},
+	{"id": "qingchuan_2", "station": 2, "offset": 8.9,
+		"begin": -320.0, "end": 340.0, "blend": 52.0, "name": "青川车场 2 道", "sign": "2"},
+	{"id": "qingchuan_3", "station": 2, "offset": 13.0,
+		"begin": -320.0, "end": 340.0, "blend": 52.0, "name": "青川车场 3 道", "sign": "3"},
+	{"id": "yangui", "station": 3, "offset": 4.6,
 		"begin": -280.0, "end": 260.0, "blend": 46.0, "name": "雁归侧线", "sign": "Y"},
 ]
 
 
 const TUNNELS := [
-	{"frac": 0.132, "length": 760.0, "height": 34.0, "name": "云岭隧道"},
-	{"frac": 0.421, "length": 1180.0, "height": 46.0, "name": "湖畔隧道"},
-	{"frac": 0.742, "length": 880.0, "height": 38.0, "name": "南岭隧道"},
+	{"frac": 0.105, "length": 620.0, "height": 34.0, "name": "云岭隧道"},
+	{"frac": 0.325, "length": 900.0, "height": 46.0, "name": "青川隧道"},
+	{"frac": 0.705, "length": 700.0, "height": 38.0, "name": "雁归隧道"},
 ]
 
 
 const BRIDGES := [
-	{"frac": 0.250, "length": 430.0, "name": "青川大桥"},
-	{"frac": 0.5275, "length": 620.0, "name": "白鹿特大桥"},
-	{"frac": 0.860, "length": 390.0, "name": "云溪大桥"},
+	{"frac": 0.145, "length": 380.0, "name": "临江大桥"},
+	{"frac": 0.470, "length": 560.0, "name": "青川特大桥"},
+	{"frac": 0.840, "length": 340.0, "name": "青石大桥"},
 ]
 
 
 const VIADUCTS := [
-	{"frac": 0.152, "length": 920.0, "height": 22.0, "name": "河谷高架桥"},
-	{"frac": 0.361, "length": 1080.0, "height": 26.0, "name": "松林高架桥"},
-	{"frac": 0.638, "length": 1000.0, "height": 30.0, "name": "石门高架桥"},
-	{"frac": 0.916, "length": 600.0, "height": 18.0, "name": "望江高架桥"},
+	{"frac": 0.130, "length": 820.0, "height": 24.0, "name": "临江山谷高架"},
+	{"frac": 0.440, "length": 1500.0, "height": 20.0, "name": "青川城市高架"},
+	{"frac": 0.685, "length": 900.0, "height": 26.0, "name": "雁归高架"},
 ]
 
 

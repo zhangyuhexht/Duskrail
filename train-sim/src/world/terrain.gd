@@ -5,7 +5,7 @@ class_name Terrain
 
 var noise := FastNoiseLite.new()
 var ridge := FastNoiseLite.new()
-var amplitude := 158.0
+var amplitude := 176.0
 var base_height := 0.0
 var flat_radius := 34.0
 var blend_radius := 210.0
@@ -232,8 +232,13 @@ func height_at(x: float, z: float) -> float:
 	var h := base_height + noise.get_noise_2d(x, z) * amplitude
 	h += noise.get_noise_2d(x * 3.1 + 512.0, z * 3.1 + 512.0) * amplitude * 0.14
 	var ridged := (ridge.get_noise_2d(x, z) * 0.5 + 0.5)
-	if ridged > 0.38:
-		h += (ridged - 0.38) * 210.0
+	if ridged > 0.34:
+		h += (ridged - 0.34) * 245.0
+	# A second, broader massif layer gives the compact map a proper mountain
+	# skyline instead of only small hills between the settlements.
+	var massif := (ridge.get_noise_2d(x * 0.52 + 1830.0, z * 0.52 - 940.0) * 0.5 + 0.5)
+	if massif > 0.46:
+		h += (massif - 0.46) * 210.0
 	h = _apply_river(h, x, z)
 	for lake: Dictionary in _lakes:
 		var c: Vector2 = lake ["center"]

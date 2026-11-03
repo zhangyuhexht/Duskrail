@@ -3,7 +3,7 @@ extends Node3D
 
 
 const GAME_NAME := "Duskrail"
-const VERSION := "alpha1.7"
+const VERSION := "alpha1.8"
 const LOADING_SCREEN := preload("res://src/ui/loading_screen.gd")
 
 var shot_path := ""
@@ -38,6 +38,8 @@ func _ready() -> void:
 	UserSettings.load_settings()
 	if _qa_upscaler >= 0:
 		UserSettings.upscaler = _qa_upscaler
+	if _qa_quality >= 0:
+		UserSettings.quality = _qa_quality
 	UserSettings.apply_all()
 	_apply_window_settings()
 	if _fullscreen_override:
@@ -420,6 +422,16 @@ func _parse_cmdline() -> void:
 			_legacy_save_load_test = true
 		elif a.begins_with("--upscaler="):
 			_qa_upscaler = Upscaling.mode_from_name(a.trim_prefix("--upscaler="))
+		elif a.begins_with("--quality="):
+			match a.trim_prefix("--quality=").to_lower():
+				"low":
+					_qa_quality = Config.Quality.LOW
+				"medium":
+					_qa_quality = Config.Quality.MEDIUM
+				"high":
+					_qa_quality = Config.Quality.HIGH
+				"ultra":
+					_qa_quality = Config.Quality.ULTRA
 
 var _pending_time := -1.0
 var mission_test := false
@@ -485,6 +497,7 @@ var _legacy_save_load_test := false
 var _qa_cab_yaw := 0.0
 var _qa_cab_pitch := 0.0
 var _qa_upscaler := -1
+var _qa_quality := -1
 var _qa_switch := -1
 var _qa_autopilot := -1
 var _qa_autopilot_panel := false
@@ -572,6 +585,7 @@ func _setup_input() -> void:
 	_key("switch_route", [KEY_G])
 	_key("weather_cycle", [KEY_Y])
 	_key("headlights", [KEY_L])
+	_key("high_beam", [KEY_O])
 	_key("doors", [KEY_K])
 	_key("handbrake", [KEY_B])
 	_key("sand", [KEY_X])
@@ -1902,8 +1916,28 @@ func _capture_and_quit() -> void:
 				pc.global_position = wv.global_transform * Vector3(6.8, 1.35, wz + 1.8)
 				pc.look_at(target)
 			elif _qa_part_cam == "door":
-				var target := origin * Vector3(-1.75, 2.45, -4.35)
-				pc.global_position = origin * Vector3(-6.4, 2.9, -2.8)
+				var target := origin * Vector3(-1.75, 2.45, -5.55)
+				pc.global_position = origin * Vector3(-6.4, 2.9, -3.9)
+				pc.look_at(target)
+			elif _qa_part_cam == "loco-dash":
+				pc.fov = 52.0
+				var target := origin * Vector3(-0.55, 2.22, -8.88)
+				pc.global_position = origin * Vector3(-0.55, 2.80, -7.80)
+				pc.look_at(target)
+			elif _qa_part_cam == "station-hall":
+				if not game.station_data.is_empty():
+					var st: Dictionary = game.station_data[0]
+					var hf: Transform3D = game.route.frame_at(float(st["dist"]))
+					var hs := signf(float(st.get("side", -1.0)))
+					var target := hf.origin + hf.basis.x * (hs * 23.0) + hf.basis.z * (-4.0) + Vector3.UP * 2.4
+					pc.global_position = hf.origin + hf.basis.x * (hs * 12.4) + hf.basis.z * 8.0 + Vector3.UP * 2.8
+					pc.look_at(target)
+			elif _qa_part_cam == "city-viaduct":
+				pc.far = 2200.0
+				var vd: float = game.route.total * 0.44
+				var vf: Transform3D = game.route.frame_at(vd)
+				var target := vf.origin + Vector3.UP * 10.0
+				pc.global_position = vf.origin + vf.basis.x * 820.0 + vf.basis.z * (-300.0) + Vector3.UP * 135.0
 				pc.look_at(target)
 			elif _qa_part_cam == "wagonbogieclose":
 				var wv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
@@ -1938,18 +1972,23 @@ func _capture_and_quit() -> void:
 				pc.look_at(target)
 			elif _qa_part_cam == "coach-door-in-left":
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
-				var target := cv.global_transform * Vector3(-4.0, 2.1, 10.45)
-				pc.global_position = cv.global_transform * Vector3(0.2, 2.5, 10.45)
+				var target := cv.global_transform * Vector3(-2.0, 2.82, 10.45)
+				pc.global_position = cv.global_transform * Vector3(0.2, 2.82, 10.45)
 				pc.look_at(target)
 			elif _qa_part_cam == "coach-door-in-right":
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
-				var target := cv.global_transform * Vector3(4.0, 2.1, 10.45)
-				pc.global_position = cv.global_transform * Vector3(-0.2, 2.5, 10.45)
+				var target := cv.global_transform * Vector3(2.0, 2.82, 10.45)
+				pc.global_position = cv.global_transform * Vector3(-0.2, 2.82, 10.45)
 				pc.look_at(target)
 			elif _qa_part_cam == "coach-inside":
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
 				var target := cv.global_transform * Vector3(0.0, 1.95, -5.5)
 				pc.global_position = cv.global_transform * Vector3(0.0, 2.42, 9.6)
+				pc.look_at(target)
+			elif _qa_part_cam == "coach-to-loco":
+				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv
+				var target := cv.global_transform * Vector3(0.0, 2.0, -14.0)
+				pc.global_position = cv.global_transform * Vector3(0.0, 2.2, -9.2)
 				pc.look_at(target)
 			elif _qa_part_cam == "coach-window":
 				var cv: Vehicle = game.train.vehicles[1] if game.train.vehicles.size() > 1 else pv

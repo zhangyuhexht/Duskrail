@@ -5,7 +5,7 @@
 param(
     [switch]$NoImport,
     [switch]$Installer,
-    [string]$Version = "alpha1.7",
+    [string]$Version = "alpha1.8",
     [switch]$Dlss
 )
 

@@ -1,4 +1,4 @@
-﻿extends Node3D
+extends Node3D
 class_name Game
 
 
@@ -10,10 +10,10 @@ static var hidden_parts := {}
 
 static var probe_forward := false
 
-const NEAR_SIZE := 36000.0
+const NEAR_SIZE := 24000.0
 const NEAR_DIV := 900
-const OUTER_SIZE := 70000.0
-const OUTER_DIV := 250
+const OUTER_SIZE := 48000.0
+const OUTER_DIV := 220
 const TERRAIN_CENTER := Vector2(0.0, 0.0)
 const TuningPanelScript = preload("res://src/ui/tuning_panel.gd")
 const ConsistPanelScript = preload("res://src/ui/consist_panel.gd")
@@ -39,15 +39,15 @@ const CAREER_CATALOG := [
 ]
 
 const RIVER := [
-	Vector2(7800.0, -2050.0),
-	Vector2(6200.0, -1050.0),
-	Vector2(4500.0, 0.0),
-	Vector2(2880.0, 1130.0),
-	Vector2(1280.0, 2080.0),
-	Vector2(-580.0, 2920.0),
-	Vector2(-2660.0, 3650.0),
-	Vector2(-4740.0, 4310.0),
-	Vector2(-7160.0, 4970.0),
+	Vector2(2496.0, -656.0),
+	Vector2(1984.0, -336.0),
+	Vector2(1440.0, 0.0),
+	Vector2(922.0, 362.0),
+	Vector2(410.0, 666.0),
+	Vector2(-186.0, 934.0),
+	Vector2(-851.0, 1168.0),
+	Vector2(-1517.0, 1379.0),
+	Vector2(-2291.0, 1590.0),
 ]
 
 var route: Route
@@ -223,13 +223,13 @@ func _run_async_build() -> void:
 		await get_tree().process_frame
 		var terrain_cb := func(p: float) -> void:
 			_emit_build(0.10 + 0.34 * p, "正在生成地形网格")
-		var near: MeshInstance3D = await terrain.build_mesh_async(NEAR_SIZE, NEAR_DIV, Gfx.terrain(), TERRAIN_CENTER, terrain_cb)
+		var near: MeshInstance3D = await terrain.build_mesh_async(NEAR_SIZE, _near_divisions(), Gfx.terrain(), TERRAIN_CENTER, terrain_cb)
 		terrain.add_child(near)
 		_emit_build(0.46, "正在生成远景地形")
 		await get_tree().process_frame
 		var outer_cb := func(p: float) -> void:
 			_emit_build(0.46 + 0.04 * p, "正在生成远景地形")
-		var outer: MeshInstance3D = await terrain.build_outer_mesh_async(NEAR_SIZE, OUTER_SIZE, OUTER_DIV, Gfx.terrain(), outer_cb)
+		var outer: MeshInstance3D = await terrain.build_outer_mesh_async(NEAR_SIZE, OUTER_SIZE, _outer_divisions(), Gfx.terrain(), outer_cb)
 		terrain.add_child(outer)
 		terrain.add_child(terrain.build_water(30.0, Gfx.water()))
 		for l: Dictionary in lakes:
@@ -345,15 +345,22 @@ func _build_stations_async() -> void:
 		station ["platform_lat"] = 4.6
 		station ["platform_top"] = 1.02 if freight else 1.1
 		station ["platform_half"] = 2.9
+		station ["hall_lat_in"] = 10.0
+		station ["hall_lat_out"] = 26.0
+		station ["hall_half"] = 19.0
+		station ["hall_entry_half"] = 4.8
+		station ["hall_top"] = float(station ["platform_top"])
 		if freight:
-			station ["yard_lat"] = 17.0
+			# The goods yard sits opposite the passenger platform, next to
+			# the sidings, so it does not collide with the station hall.
+			station ["yard_lat"] = -17.0
 			station ["yard_half"] = 6.5
 			station ["yard_len"] = clampf(platform_len * 0.65, 80.0, 150.0)
 			station ["yard_top"] = 0.26
 		await _build_station(d, info ["name"], side, freight, platform_len, settlement, true)
 		_build_stop_mark(stop, side, info ["name"])
 		if freight:
-			station_data [i] ["hoist"] = _build_freight_yard(d, side, info ["name"], platform_len)
+			station_data [i] ["hoist"] = _build_freight_yard(d, -side, info ["name"], platform_len)
 		if String(station ["settlement"]) != "halt":
 			await _build_settlement(station, true)
 		_emit_build(0.64 + 0.18 * float(i + 1) / float(total), "正在建设 %s" %info ["name"])
@@ -388,6 +395,12 @@ func _on_device_action(id: String, value: float) -> String:
 		return _toggle_cab_door(-1)
 	if id == "cab_door_right":
 		return _toggle_cab_door(1)
+	if id == "autopilot":
+		open_autopilot()
+		return ""
+	if id == "high_beam":
+		_toggle_high_beam()
+		return ""
 	var msg := startup.press(id, value)
 	if id == "horn" and audio != null:
 		audio.blast()
@@ -527,6 +540,22 @@ func _ray_box(o: Vector3, d: Vector3, box: AABB) -> float:
 func _skip(part: String) -> bool:
 	return hidden_parts.has(part)
 
+
+func _near_divisions() -> int:
+	if Config.quality <= Config.Quality.LOW:
+		return 540
+	if Config.quality == Config.Quality.MEDIUM:
+		return 720
+	return NEAR_DIV
+
+
+func _outer_divisions() -> int:
+	if Config.quality <= Config.Quality.LOW:
+		return 138
+	if Config.quality == Config.Quality.MEDIUM:
+		return 184
+	return OUTER_DIV
+
 func position_at_station(i: int) -> Vector3:
 	if route == null:
 		return Vector3.ZERO
@@ -631,7 +660,10 @@ func _configure_quality() -> void:
 	if world_env == null or world_env.environment == null or sun == null:
 		return
 	var q := Config.quality
+	var low := q == Config.Quality.LOW
 	var env := world_env.environment
+	# Low is deliberately a "integrated GPU / safe fps" preset: no screen
+	# space effects, no bloom, no depth fog and no realtime sun shadows.
 	env.ssao_enabled = q >= Config.Quality.MEDIUM
 	env.ssao_radius = 1.5
 	env.ssao_intensity = 1.3 if q >= Config.Quality.ULTRA else 1.0
@@ -640,17 +672,24 @@ func _configure_quality() -> void:
 	env.ssil_intensity = 0.5
 	env.glow_enabled = q >= Config.Quality.MEDIUM
 	env.glow_intensity = 0.42 if q >= Config.Quality.ULTRA else 0.32
+	env.glow_bloom = 0.0 if low else 0.06
+	env.fog_enabled = not low
 	env.fog_density = 0.0007 if q >= Config.Quality.HIGH else 0.0011
 	env.volumetric_fog_enabled = q >= Config.Quality.ULTRA
 	env.volumetric_fog_density = 0.008
 	env.ssr_enabled = q >= Config.Quality.HIGH
+	if env.sky != null:
+		env.sky.radiance_size = Sky.RADIANCE_SIZE_256 if low else Sky.RADIANCE_SIZE_512
 	sun.light_volumetric_fog_energy = 1.6 if q >= Config.Quality.ULTRA else 0.0
+	sun.shadow_enabled = q >= Config.Quality.MEDIUM
 	sun.shadow_blur = 0.9 if q >= Config.Quality.MEDIUM else 1.4
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS if q >= Config.Quality.HIGH else DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-	sun.directional_shadow_max_distance = 410.0 if q >= Config.Quality.HIGH else 150.0
+	sun.directional_shadow_max_distance = 410.0 if q >= Config.Quality.HIGH else (185.0 if q >= Config.Quality.MEDIUM else 110.0)
 	var vp := get_viewport()
 	if vp == null:
 		return
+	vp.positional_shadow_atlas_size = 1024 if low else (2048 if q == Config.Quality.MEDIUM else 4096)
+	vp.positional_shadow_atlas_16_bits = low or q == Config.Quality.MEDIUM
 	if Upscaling.is_temporal(UserSettings.upscaler):
 		# DLSS / FSR 2.2 already handle anti-aliasing during upscaling.
 		vp.msaa_3d = Viewport.MSAA_DISABLED
@@ -675,7 +714,7 @@ func _configure_quality() -> void:
 
 func _sky_material() -> ShaderMaterial:
 	var sh := Shader.new()
-	sh.code = "\nshader_type sky;\n\nuniform vec3 sky_top : source_color = vec3(0.13, 0.32, 0.72);\nuniform vec3 sky_horizon : source_color = vec3(0.70, 0.78, 0.86);\nuniform vec3 ground_color : source_color = vec3(0.40, 0.43, 0.44);\nuniform vec3 sun_tint : source_color = vec3(1.0, 0.93, 0.80);\nuniform vec3 cloud_hi : source_color = vec3(1.0, 0.99, 0.98);\nuniform vec3 cloud_lo : source_color = vec3(0.52, 0.57, 0.66);\nuniform float cloud_coverage = 0.50;\nuniform float cloud_softness = 0.22;\nuniform float cloud_scale = 2.6;\nuniform float cloud_opacity = 0.85;\nuniform float sun_energy = 0.8;\nuniform vec3 moon_dir = vec3(0.0, 0.5, 0.5);\nuniform float moon_energy = 0.0;\nuniform float star_energy = 0.0;\n\nfloat hash(vec2 p) {\n\treturn fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\n\nfloat vnoise(vec2 p) {\n\tvec2 i = floor(p);\n\tvec2 f = fract(p);\n\tf = f * f * (3.0 - 2.0 * f);\n\tfloat a = hash(i);\n\tfloat b = hash(i + vec2(1.0, 0.0));\n\tfloat c = hash(i + vec2(0.0, 1.0));\n\tfloat d = hash(i + vec2(1.0, 1.0));\n\treturn mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n}\n\nfloat fbm(vec2 p) {\n\tfloat v = 0.0;\n\tfloat amp = 0.5;\n\tfor (int i = 0; i < 5; i++) {\n\t\tv += amp * vnoise(p);\n\t\tp *= 2.03;\n\t\tamp *= 0.5;\n\t}\n\treturn v;\n}\n\nvoid sky() {\n\tfloat h = EYEDIR.y;\n\tvec3 col = mix(sky_horizon, sky_top, pow(clamp(h, 0.0, 1.0), 0.62));\n\t// 太阳\n\tif (h > 0.0 && star_energy > 0.001) {\n\t\tvec2 sp = EYEDIR.xz / max(h, 0.002);\n\t\tvec2 cell = floor(sp * 58.0);\n\t\tvec2 f = fract(sp * 58.0) - 0.5;\n\t\tfloat star = step(0.972, hash(cell)) * smoothstep(0.28, 0.02, length(f));\n\t\tfloat tw = 0.58 + 0.42 * sin(TIME * 1.7 + hash(cell + 7.0) * 23.0);\n\t\tcol += vec3(0.78, 0.88, 1.0) * star * tw * star_energy * smoothstep(0.0, 0.10, h);\n\t}\n\tfloat sd = clamp(dot(EYEDIR, normalize(LIGHT0_DIRECTION)), 0.0, 1.0);\n\tcol += sun_tint * (pow(sd, 1200.0) * 5.0 + pow(sd, 14.0) * 0.10) * sun_energy;\n\tfloat md = clamp(dot(EYEDIR, normalize(moon_dir)), 0.0, 1.0);\n\tcol += vec3(0.62, 0.74, 1.0) * (pow(md, 900.0) * 3.4 + pow(md, 24.0) * 0.08) * moon_energy;\n\tif (h > 0.002) {\n\t\tvec2 uv = EYEDIR.xz / max(h, 0.002) * 0.34;\n\t\tfloat n = fbm(uv * cloud_scale);\n\t\tfloat cover = smoothstep(cloud_coverage, cloud_coverage + cloud_softness, n);\n\t\tfloat fade = smoothstep(0.0, 0.16, h) * (1.0 - smoothstep(0.55, 1.0, h) * 0.35);\n\t\tfloat shade = fbm(uv * cloud_scale * 2.3 + vec2(3.7, 1.9));\n\t\tvec3 cc = mix(cloud_lo, cloud_hi, clamp(shade * 1.35, 0.0, 1.0));\n\t\tcol = mix(col, cc, cover * fade * cloud_opacity);\n\t} else {\n\t\tcol = mix(sky_horizon, ground_color, smoothstep(0.0, -0.10, h));\n\t}\n\tCOLOR = col;\n}\n"
+	sh.code = "\nshader_type sky;\n\nuniform vec3 sky_top : source_color = vec3(0.13, 0.32, 0.72);\nuniform vec3 sky_horizon : source_color = vec3(0.70, 0.78, 0.86);\nuniform vec3 ground_color : source_color = vec3(0.40, 0.43, 0.44);\nuniform vec3 sun_tint : source_color = vec3(1.0, 0.93, 0.80);\nuniform vec3 cloud_hi : source_color = vec3(1.0, 0.99, 0.98);\nuniform vec3 cloud_lo : source_color = vec3(0.52, 0.57, 0.66);\nuniform float cloud_coverage = 0.50;\nuniform float cloud_softness = 0.22;\nuniform float cloud_scale = 2.6;\nuniform float cloud_opacity = 0.85;\nuniform float sun_energy = 0.8;\nuniform vec3 moon_dir = vec3(0.0, 0.5, 0.5);\nuniform float moon_energy = 0.0;\nuniform float star_energy = 0.0;\n\nfloat hash(vec2 p) {\n\treturn fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);\n}\n\nfloat vnoise(vec2 p) {\n\tvec2 i = floor(p);\n\tvec2 f = fract(p);\n\tf = f * f * (3.0 - 2.0 * f);\n\tfloat a = hash(i);\n\tfloat b = hash(i + vec2(1.0, 0.0));\n\tfloat c = hash(i + vec2(0.0, 1.0));\n\tfloat d = hash(i + vec2(1.0, 1.0));\n\treturn mix(mix(a, b, f.x), mix(c, d, f.x), f.y);\n}\n\nfloat fbm(vec2 p) {\n\tfloat v = 0.0;\n\tfloat amp = 0.5;\n\tfor (int i = 0; i < 5; i++) {\n\t\tv += amp * vnoise(p);\n\t\tp *= 2.03;\n\t\tamp *= 0.5;\n\t}\n\treturn v;\n}\n\nvoid sky() {\n\tfloat h = EYEDIR.y;\n\tvec3 col = mix(sky_horizon, sky_top, pow(clamp(h, 0.0, 1.0), 0.62));\n\t// 太阳\n\tif (h > 0.0 && star_energy > 0.001) {\n\t\tvec2 sp = EYEDIR.xz / max(h, 0.002);\n\t\tvec2 cell = floor(sp * 58.0);\n\t\tvec2 f = fract(sp * 58.0) - 0.5;\n\t\tfloat star = step(0.972, hash(cell)) * smoothstep(0.28, 0.02, length(f));\n\t\tfloat tw = 0.58 + 0.42 * sin(TIME * 1.7 + hash(cell + 7.0) * 23.0);\n\t\tcol += vec3(0.78, 0.88, 1.0) * star * tw * star_energy * smoothstep(0.0, 0.10, h);\n\t}\n\tfloat sd = clamp(dot(EYEDIR, normalize(LIGHT0_DIRECTION)), 0.0, 1.0);\n\tcol += sun_tint * (pow(sd, 1200.0) * 5.0 + pow(sd, 14.0) * 0.10) * sun_energy;\n\tfloat md = clamp(dot(EYEDIR, normalize(moon_dir)), 0.0, 1.0);\n\tcol += vec3(0.62, 0.74, 1.0) * (pow(md, 900.0) * 3.4 + pow(md, 24.0) * 0.08) * moon_energy;\n\tif (h > 0.002 && cloud_opacity > 0.001) {\n\t\tvec2 uv = EYEDIR.xz / max(h, 0.002) * 0.34;\n\t\tfloat n = fbm(uv * cloud_scale);\n\t\tfloat cover = smoothstep(cloud_coverage, cloud_coverage + cloud_softness, n);\n\t\tfloat fade = smoothstep(0.0, 0.16, h) * (1.0 - smoothstep(0.55, 1.0, h) * 0.35);\n\t\tfloat shade = fbm(uv * cloud_scale * 2.3 + vec2(3.7, 1.9));\n\t\tvec3 cc = mix(cloud_lo, cloud_hi, clamp(shade * 1.35, 0.0, 1.0));\n\t\tcol = mix(col, cc, cover * fade * cloud_opacity);\n\t} else {\n\t\tcol = mix(sky_horizon, ground_color, smoothstep(0.0, -0.10, h));\n\t}\n\tCOLOR = col;\n}\n"
 
 
 
@@ -803,12 +842,16 @@ func _apply_time() -> void:
 					sky_mat.set_shader_parameter("cloud_opacity", 0.9)
 					sky_mat.set_shader_parameter("cloud_hi", Color(0.66, 0.69, 0.72))
 					sky_mat.set_shader_parameter("cloud_lo", Color(0.38, 0.41, 0.44))
+		if Config.quality <= Config.Quality.LOW:
+			# Skip the five-octave cloud fbm on integrated GPUs.
+			sky_mat.set_shader_parameter("cloud_opacity", 0.0)
 	for s: Settlement in settlements:
 		if is_instance_valid(s):
 			s.set_night(1.0 - day)
+	var station_energy := 4.2 if Config.quality <= Config.Quality.LOW else 5.5
 	for pl: OmniLight3D in station_lights:
 		if is_instance_valid(pl):
-			pl.light_energy = 5.5 * (1.0 - day)
+			pl.light_energy = station_energy * (1.0 - day)
 
 
 
@@ -856,11 +899,11 @@ func _prepare_terrain() -> void:
 		var d := Config.station_dist(route, i)
 		var fr := route.frame_at(d)
 		var side := float(info.get("settlement_side", -1.0))
-		var offset := 520.0 if kind == "city" else 255.0
+		var offset := float(info.get("urban_offset", 520.0 if kind == "city" else 255.0))
 		var center := fr.origin + fr.basis.x * side * offset
 		var pad_h := fr.origin.y - 1.0
-		var radius := 360.0 if kind == "city" else 150.0
-		var blend := 220.0 if kind == "city" else 120.0
+		var radius := float(info.get("urban_radius", 360.0 if kind == "city" else 150.0))
+		var blend := 300.0 if kind == "city" else 130.0
 		terrain.add_pad(center, radius, blend, pad_h)
 		print("[settlement] %s %s center=%s h=%.1f r=%.0f" %[info ["name"], kind, center, pad_h, radius])
 		settlement_sites.append({
@@ -873,15 +916,34 @@ func _prepare_terrain() -> void:
 			"station": i,
 			"population": int(info.get("population", 0)),
 		})
+		if i == 2:
+			# A second, lower urban district sits under the long city viaduct.
+			# The railway is then visibly elevated above real streets instead
+			# of running through a flat painted backdrop.
+			var vf := route.frame_at(route.total * 0.44)
+			var vside := 1.0
+			var vcenter := vf.origin + vf.basis.x * (vside * 240.0)
+			var vpad_h := vf.origin.y - 18.0
+			terrain.add_pad(vcenter, 700.0, 280.0, vpad_h)
+			print("[settlement] 青川高架城 city center=%s h=%.1f r=700" %[vcenter, vpad_h])
+			settlement_sites.append({
+				"name": "青川高架城",
+				"kind": "city",
+				"center": vcenter,
+				"height": vpad_h,
+				"radius": 700.0,
+				"side": vside,
+				"station": i,
+				"population": 96000,
+			})
 
 	lakes.clear()
 	for lake_spec: Dictionary in [
-		{"name": "星湖", "station": 12, "side": 1.0, "offset": 280.0, "radius": 330.0},
-		{"name": "镜湖", "station": 7, "side": -1.0, "offset": 320.0, "radius": 260.0},
-		{"name": "江湾泽", "station": 8, "side": 1.0, "offset": 520.0, "radius": 320.0},
-		{"name": "云溪湖", "station": 15, "side": 1.0, "offset": 620.0, "radius": 380.0},
-		{"name": "望江湾", "station": 16, "side": -1.0, "offset": 640.0, "radius": 460.0},
-		{"name": "云梦泽", "frac": 0.638, "side": 0.0, "offset": 0.0, "radius": 430.0},
+		{"name": "山川湖", "station": 0, "side": 1.0, "offset": 360.0, "radius": 310.0},
+		{"name": "青川镜湖", "station": 2, "side": 1.0, "offset": 460.0, "radius": 330.0},
+		{"name": "青石湖", "station": 4, "side": 1.0, "offset": 340.0, "radius": 300.0},
+		{"name": "云梦泽", "frac": 0.44, "side": 1.0, "offset": 520.0, "radius": 390.0},
+		{"name": "雁归湾", "station": 3, "side": -1.0, "offset": 420.0, "radius": 320.0},
 	]:
 		var fr: Transform3D
 		if lake_spec.has("frac"):
@@ -897,9 +959,9 @@ func _prepare_terrain() -> void:
 
 func _build_terrain_surface() -> void:
 	var mat := Gfx.terrain()
-	var near := terrain.build_mesh(NEAR_SIZE, NEAR_DIV, mat, TERRAIN_CENTER)
+	var near := terrain.build_mesh(NEAR_SIZE, _near_divisions(), mat, TERRAIN_CENTER)
 	terrain.add_child(near)
-	var outer := terrain.build_outer_mesh(NEAR_SIZE, OUTER_SIZE, OUTER_DIV, mat)
+	var outer := terrain.build_outer_mesh(NEAR_SIZE, OUTER_SIZE, _outer_divisions(), mat)
 	terrain.add_child(outer)
 	var water := terrain.build_water(30.0, Gfx.water())
 	terrain.add_child(water)
@@ -942,15 +1004,31 @@ func _build_vegetation(yield_frames := false) -> void:
 			"d": Config.station_dist(route, i),
 			"side": float(Config.STATIONS[i].get("settlement_side", -1.0 if i % 2 == 0 else 1.0)),
 		})
-	var count := 18000
+	var count := 50000
+	match Config.quality:
+		Config.Quality.LOW:
+			count = 5000
+		Config.Quality.MEDIUM:
+			count = 30000
+		Config.Quality.HIGH:
+			count = 50000
+		_:
+			count = 70000
+	var tree_range := 1800.0
+	var near_range := 120.0
+	if Config.quality <= Config.Quality.LOW:
+		# Low quality keeps a single, closer tree layer instead of paying for
+		# distant forest overdraw.
+		tree_range = 700.0
+		near_range = 700.0
 	for i in range(count):
 		var d := rng.randf() * route.total
-		var lateral :=(14.0 + pow(rng.randf(), 1.35) * 980.0) *(1.0 if rng.randf() < 0.5 else -1.0)
+		var lateral :=(14.0 + pow(rng.randf(), 1.2) * tree_range) *(1.0 if rng.randf() < 0.5 else -1.0)
 		var xf := route.frame_at(d)
 		var pos := xf.origin + xf.basis.x * lateral
 		var y := terrain.height_at(pos.x, pos.z)
 		var n := _terrain_normal(roundi(pos.x), roundi(pos.z))
-		if n.y < 0.72:
+		if n.y < 0.62:
 			continue
 		if y < 2.0:
 			continue
@@ -970,17 +1048,22 @@ func _build_vegetation(yield_frames := false) -> void:
 		var s := 0.75 + rng.randf() * 0.85
 		var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s *(0.85 + rng.randf() * 0.5), s))
 		var item := Transform3D(basis, Vector3(pos.x, y - 0.75, pos.z))
-		if absf(lateral) < 120.0:
+		if absf(lateral) < near_range:
 			near [key].append(item)
 		else:
 			far [key].append(item)
 		if yield_frames and i % 320 == 0:
 			await get_tree().process_frame
 	# A denser wooded belt on the empty side of each station.
+	var belt_count := 320
+	if Config.quality <= Config.Quality.LOW:
+		belt_count = 90
+	elif Config.quality == Config.Quality.MEDIUM:
+		belt_count = 180
 	for si in range(Config.STATIONS.size()):
 		var sd := Config.station_dist(route, si)
 		var side := float(Config.STATIONS[si].get("settlement_side", -1.0 if si % 2 == 0 else 1.0))
-		for k in range(220):
+		for k in range(belt_count):
 			var dd := route.wrap_dist(sd + rng.randf_range(-650.0, 650.0))
 			var lateral := -side * (55.0 + rng.randf() * 300.0)
 			var xf := route.frame_at(dd)
@@ -997,12 +1080,16 @@ func _build_vegetation(yield_frames := false) -> void:
 			var s := 0.85 + rng.randf() * 1.0
 			var basis := Basis(Vector3.UP, rng.randf() * TAU).scaled(Vector3(s, s * (0.85 + rng.randf() * 0.5), s))
 			var item := Transform3D(basis, Vector3(pos.x, y - 0.75, pos.z))
-			if absf(lateral) < 120.0:
+			if absf(lateral) < near_range:
 				near [key].append(item)
 			else:
 				far [key].append(item)
 	var total_placed := 0
 	for is_near in [true, false]:
+		if not is_near and Config.quality <= Config.Quality.LOW:
+			# On low-end integrated GPUs the distant tree layer is a lot of
+			# overdraw for very little screen coverage; keep only the near belt.
+			continue
 		var group: Dictionary = near if is_near else far
 		for key in group.keys():
 			var arr: Array = group [key]
@@ -1018,7 +1105,9 @@ func _build_vegetation(yield_frames := false) -> void:
 			inst.name = "Trees_%s_%s" %[key, "near" if is_near else "far"]
 			inst.multimesh = mm
 			inst.material_override = _tree_material(key == "conifer")
-			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if is_near else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			inst.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON \
+					if is_near and Config.quality >= Config.Quality.MEDIUM \
+					else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			add_child(inst)
 			total_placed += arr.size()
 	stats ["trees"] = total_placed
@@ -1153,15 +1242,22 @@ func _build_stations() -> void:
 		station ["platform_lat"] = 4.6
 		station ["platform_top"] = 1.02 if freight else 1.1
 		station ["platform_half"] = 2.9
+		station ["hall_lat_in"] = 10.0
+		station ["hall_lat_out"] = 26.0
+		station ["hall_half"] = 19.0
+		station ["hall_entry_half"] = 4.8
+		station ["hall_top"] = float(station ["platform_top"])
 		if freight:
-			station ["yard_lat"] = 17.0
+			# The goods yard sits opposite the passenger platform, next to
+			# the sidings, so it does not collide with the station hall.
+			station ["yard_lat"] = -17.0
 			station ["yard_half"] = 6.5
 			station ["yard_len"] = clampf(platform_len * 0.65, 80.0, 150.0)
 			station ["yard_top"] = 0.26
 		_build_station(d, info ["name"], side, freight, platform_len, settlement)
 		_build_stop_mark(stop, side, info ["name"])
 		if freight:
-			station_data [i] ["hoist"] = _build_freight_yard(d, side, info ["name"], platform_len)
+			station_data [i] ["hoist"] = _build_freight_yard(d, -side, info ["name"], platform_len)
 		if String(station ["settlement"]) != "halt":
 			_build_settlement(station)
 
@@ -1176,7 +1272,6 @@ func _build_settlement(station: Dictionary, yield_frames := false) -> void:
 			else:
 				s = Settlement.build(self, route, site)
 			settlements.append(s)
-			return
 
 func _build_stop_mark(dist: float, side: float, station_name := "") -> void:
 	var group := Node3D.new()
@@ -1396,7 +1491,8 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	_add_merged(group, "PlatformLamps", lamp_items, Gfx.metal(Color(0.3, 0.32, 0.34), 0.55, 0.6))
 	if yield_frames:
 		await get_tree().process_frame
-	for k: float in [0.25, 0.5, 0.75]:
+	var station_light_ks: Array = [0.5] if Config.quality <= Config.Quality.LOW else [0.25, 0.5, 0.75]
+	for k: float in station_light_ks:
 		var ld := dist - platform_len * 0.5 + platform_len * k
 		var lf := route.frame_at(ld)
 		var sp := lf.origin + lf.basis.x *(side *(lat_c + 2.2)) + Vector3.UP *(top + 6.4)
@@ -1566,55 +1662,178 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 		group.add_child(fsgn)
 
 	var bdg_frame := route.frame_at(dist)
-	var bdg_pos := bdg_frame.origin + bdg_frame.basis.x *(side *(30.0 if freight else 17.0))
-	var bdg_basis := Basis(Vector3.UP, bdg_frame.basis.get_euler().y)
-	var bdg_scale := 1.0
-	if settlement == "city":
-		bdg_scale = 1.35
-	elif settlement == "town":
-		bdg_scale = 1.15
-	var bdg_ys := 1.0 + (bdg_scale - 1.0) * 0.5
+	var hall_off := 18.0
+	var hall_w := 15.6
+	var hall_d := 38.0
+	var hall_h := 10.6 if settlement == "city" else (9.2 if settlement == "town" else 8.2)
+	var hall_floor := bdg_frame.origin.y + top
+	var bdg_pos := bdg_frame.origin + bdg_frame.basis.x * (side * hall_off)
+	bdg_pos.y = hall_floor
+	# Follow the local track gradient as well as its heading, so the floor
+	# meets the platform without a step and the forecourt stays flush.
+	var bdg_basis := bdg_frame.basis
 	var bdg := Node3D.new()
 	bdg.name = "StationBuilding"
 	bdg.transform = Transform3D(bdg_basis, bdg_pos)
-	bdg.scale = Vector3(bdg_scale, bdg_ys, bdg_scale)
 	group.add_child(bdg)
-	var walls := MeshInstance3D.new()
-	walls.mesh = Forge.box(Vector3(13.0, 9.5, 34.0))
-	walls.position = Vector3(0, 4.75, 0)
-	walls.material_override = Gfx.paint(Color(0.8, 0.78, 0.73), 0.6, 0.05, 0.2)
-	bdg.add_child(walls)
-	var base_band := MeshInstance3D.new()
-	base_band.mesh = Forge.box(Vector3(13.4, 1.6, 34.4))
-	base_band.position = Vector3(0, 0.8, 0)
-	base_band.material_override = Gfx.paint(Color(0.52, 0.48, 0.44), 0.7, 0.05, 0.2)
-	bdg.add_child(base_band)
-	var roof2 := MeshInstance3D.new()
-	roof2.mesh = Forge.box(Vector3(15.0, 0.8, 36.0))
-	roof2.position = Vector3(0, 9.7, 0)
-	roof2.material_override = Gfx.paint(Color(0.35, 0.2, 0.16), 0.7, 0.1, 0.15)
-	bdg.add_child(roof2)
-	var entrance := MeshInstance3D.new()
-	entrance.mesh = Forge.box(Vector3(0.5, 3.4, 9.0))
-	entrance.position = Vector3(-side * 6.55, 1.7, 0)
-	entrance.material_override = Gfx.glass(Color(0.1, 0.14, 0.2), 0.06, 0.45)
-	bdg.add_child(entrance)
-	var glass_mat := Gfx.glass(Color(0.05, 0.08, 0.12), 0.08, 0.7)
-	var win_items := []
-	for i in range(6):
-		var wz := -14.0 + float(i) * 5.6
-		win_items.append([Forge.box(Vector3(0.2, 2.4, 3.2)), Transform3D(Basis(), Vector3(-side * 6.55, 5.4, wz))])
-		win_items.append([Forge.box(Vector3(0.2, 2.4, 3.2)), Transform3D(Basis(), Vector3(side * 6.55, 5.4, wz))])
-		win_items.append([Forge.box(Vector3(0.26, 0.16, 3.4)), Transform3D(Basis(), Vector3(-side * 6.72, 6.7, wz))])
-	var wins := MeshInstance3D.new()
-	wins.mesh = Forge.merge_all(win_items)
-	wins.material_override = glass_mat
-	bdg.add_child(wins)
 
+	var wall_mat := Gfx.paint(Color(0.79, 0.77, 0.72), 0.62, 0.05, 0.2)
+	var stone_mat := Gfx.paint(Color(0.48, 0.46, 0.43), 0.72, 0.04, 0.2)
+	var roof_mat := Gfx.paint(Color(0.30, 0.19, 0.16), 0.68, 0.08, 0.2)
+	var trim_mat := Gfx.metal(Color(0.26, 0.28, 0.30), 0.52, 0.52)
+	var glass_mat := Gfx.glass(Color(0.12, 0.19, 0.24), 0.05, 0.30)
+	var floor_mat := Gfx.noise_surface(Color(0.56, 0.55, 0.52), 0.86, 0.32, 0.2)
+	var ceiling_mat := Gfx.interior_panel(Color(0.64, 0.65, 0.64), 0.62)
+	var light_mat := Gfx.emissive(Color(1.0, 0.95, 0.84), 1.15, Color(0.72, 0.68, 0.58))
+	var inner_x := -side * hall_w * 0.5
+	var outer_x := side * hall_w * 0.5
+	var entry_half := 4.8
+
+	# Foundation down to the landscape, plus a paved forecourt that reaches
+	# the platform edge. This is the terrain transition the old solid box
+	# never had: the hall now sits on a visible plinth instead of floating.
+	var ground := terrain.height_at(bdg_pos.x, bdg_pos.z) if terrain != null else hall_floor - 2.0
+	var drop := maxf(0.45, hall_floor - ground + 0.25)
+	_add_merged(bdg, "HallFoundation", [
+		[Forge.box(Vector3(hall_w, drop, hall_d)),
+			Transform3D(Basis(), Vector3(0, - drop * 0.5, 0))]
+	], stone_mat)
+	_add_merged(bdg, "HallFloor", [
+		[Forge.box(Vector3(hall_w, 0.18, hall_d)),
+			Transform3D(Basis(), Vector3(0, -0.09, 0))],
+		[Forge.box(Vector3(hall_w - 0.6, 0.025, hall_d - 0.6)),
+			Transform3D(Basis(), Vector3(0, 0.02, 0))]
+	], floor_mat)
+	var court_x := -side * (hall_w * 0.5 + 1.5)
+	var court_w := 3.2
+	var court_ground := terrain.height_at(
+			(bdg_frame.origin + bdg_frame.basis.x * (side * (hall_off - 1.5))).x,
+			(bdg_frame.origin + bdg_frame.basis.x * (side * (hall_off - 1.5))).z) if terrain != null else hall_floor - 2.0
+	var court_drop := maxf(0.35, hall_floor - court_ground + 0.18)
+	_add_merged(bdg, "HallForecourtFoundation", [
+		[Forge.box(Vector3(court_w, court_drop, hall_d + 5.0)),
+			Transform3D(Basis(), Vector3(court_x, - court_drop * 0.5, 0))]
+	], stone_mat)
+	_add_merged(bdg, "HallForecourt", [
+		[Forge.box(Vector3(court_w + 0.04, 0.12, hall_d + 5.0)),
+			Transform3D(Basis(), Vector3(court_x, -0.055, 0))]
+	], floor_mat)
+
+	var wall_items := []
+	# Rear and end walls.
+	wall_items.append([Forge.box(Vector3(0.24, hall_h, hall_d)),
+			Transform3D(Basis(), Vector3(outer_x, hall_h * 0.5, 0))])
+	for zc: float in [- hall_d * 0.5, hall_d * 0.5]:
+		wall_items.append([Forge.box(Vector3(hall_w, hall_h, 0.24)),
+				Transform3D(Basis(), Vector3(0, hall_h * 0.5, zc))])
+	# Track-side elevation: two glazed bays around the open central entrance.
+	var bay_len := hall_d * 0.5 - entry_half
+	var bay_z := entry_half + bay_len * 0.5
+	for zc: float in [-bay_z, bay_z]:
+		wall_items.append([Forge.box(Vector3(0.24, 2.2, bay_len)),
+				Transform3D(Basis(), Vector3(inner_x, 1.1, zc))])
+		wall_items.append([Forge.box(Vector3(0.24, hall_h - 4.8, bay_len)),
+				Transform3D(Basis(), Vector3(inner_x, 4.8 + (hall_h - 4.8) * 0.5, zc))])
+		wall_items.append([Forge.box(Vector3(0.045, 2.6, bay_len - 0.3)),
+				Transform3D(Basis(), Vector3(inner_x - side * 0.14, 3.5, zc))])
+		for mz in range(4):
+			var mzz := zc - bay_len * 0.5 + 0.4 + float(mz) * (bay_len - 0.8) / 3.0
+			wall_items.append([Forge.box(Vector3(0.08, 2.7, 0.10)),
+					Transform3D(Basis(), Vector3(inner_x - side * 0.17, 3.5, mzz))])
+	# Entrance header and portal trim.
+	wall_items.append([Forge.box(Vector3(0.24, hall_h - 3.9, entry_half * 2.0)),
+			Transform3D(Basis(), Vector3(inner_x, 3.9 + (hall_h - 3.9) * 0.5, 0))])
+	for zc2: float in [-entry_half, entry_half]:
+		wall_items.append([Forge.box(Vector3(0.34, 4.05, 0.18)),
+				Transform3D(Basis(), Vector3(inner_x - side * 0.05, 2.025, zc2))])
+	wall_items.append([Forge.box(Vector3(0.34, 0.20, entry_half * 2.0 + 0.36)),
+			Transform3D(Basis(), Vector3(inner_x - side * 0.05, 4.05, 0))])
+	_add_merged(bdg, "HallWalls", wall_items, wall_mat)
+	# Low stone plinth around the outside faces.
+	var plinth := []
+	for zc: float in [- hall_d * 0.5, hall_d * 0.5]:
+		plinth.append([Forge.box(Vector3(hall_w + 0.10, 1.05, 0.20)),
+				Transform3D(Basis(), Vector3(0, 0.525, zc + signf(zc) * 0.08))])
+	plinth.append([Forge.box(Vector3(0.20, 1.05, hall_d + 0.10)),
+			Transform3D(Basis(), Vector3(outer_x + side * 0.08, 0.525, 0))])
+	_add_merged(bdg, "HallPlinth", plinth, stone_mat)
+
+	# Roof, skylight strip and the canopy over the entrance.
+	_add_merged(bdg, "HallRoof", [
+		[Forge.box(Vector3(hall_w + 1.4, 0.5, hall_d + 1.6)),
+			Transform3D(Basis(), Vector3(0, hall_h + 0.25, 0))],
+		[Forge.box(Vector3(hall_w + 1.7, 0.18, hall_d + 1.9)),
+			Transform3D(Basis(), Vector3(0, hall_h + 0.58, 0))]
+	], roof_mat)
+	_add_merged(bdg, "HallSkylight", [
+		[Forge.box(Vector3(5.8, 0.08, hall_d * 0.52)),
+			Transform3D(Basis(), Vector3(0, hall_h + 0.53, 0))]
+	], Gfx.glass(Color(0.20, 0.28, 0.33), 0.08, 0.36))
+	var canopy_x := inner_x - side * 1.9
+	_add_merged(bdg, "HallCanopy", [
+		[Forge.box(Vector3(3.8, 0.24, entry_half * 2.0 + 3.0)),
+			Transform3D(Basis(), Vector3(canopy_x, 4.25, 0))],
+		[Forge.box(Vector3(3.9, 0.06, entry_half * 2.0 + 3.1)),
+			Transform3D(Basis(), Vector3(canopy_x, 4.10, 0))]
+	], Gfx.metal(Color(0.31, 0.34, 0.37), 0.46, 0.62))
+	var canopy_cols := []
+	for cz: float in [-entry_half - 0.9, entry_half + 0.9]:
+		canopy_cols.append([Forge.box(Vector3(0.26, 4.15, 0.26)),
+				Transform3D(Basis(), Vector3(inner_x - side * 3.55, 2.075, cz))])
+	_add_merged(bdg, "HallCanopyColumns", canopy_cols, trim_mat)
+
+	# Interior: columns, ticket counter, benches, information boards and
+	# warm ceiling panels. The centre stays clear for walking in from the
+	# platform and out through the rear doors.
+	var inside := []
+	for cx: float in [-4.2, 4.2]:
+		for cz: float in [-11.5, 11.5]:
+			inside.append([Forge.box(Vector3(0.48, hall_h - 0.5, 0.48)),
+					Transform3D(Basis(), Vector3(cx, (hall_h - 0.5) * 0.5, cz))])
+	for lz: float in [-12.0, -4.0, 4.0, 12.0]:
+		for lx: float in [-2.6, 2.6]:
+			inside.append([Forge.box(Vector3(1.25, 0.05, 3.2)),
+					Transform3D(Basis(), Vector3(lx, hall_h - 0.30, lz))])
+	inside.append([Forge.box(Vector3(0.90, 1.06, 10.5)),
+			Transform3D(Basis(), Vector3(outer_x - side * 0.75, 0.53, -8.5))])
+	inside.append([Forge.box(Vector3(0.10, 1.05, 10.0)),
+			Transform3D(Basis(), Vector3(outer_x - side * 1.40, 1.58, -8.5))])
+	for bz: float in [-11.5, 12.5]:
+		for k in range(3):
+			inside.append([Forge.box(Vector3(4.8, 0.10, 0.56)),
+					Transform3D(Basis(), Vector3(-1.0, 0.46, bz + float(k) * 0.76))])
+			inside.append([Forge.box(Vector3(4.8, 0.46, 0.08)),
+					Transform3D(Basis(), Vector3(-1.0, 0.70, bz + float(k) * 0.76 - 0.28))])
+	_add_merged(bdg, "HallInteriorFurniture", inside, Gfx.interior_panel(Color(0.38, 0.40, 0.42), 0.55))
+	var ceiling_lights := []
+	for lx: float in [-2.6, 2.6]:
+		for lz: float in [-12.0, -4.0, 4.0, 12.0]:
+			ceiling_lights.append([Forge.box(Vector3(1.20, 0.04, 2.9)),
+					Transform3D(Basis(), Vector3(lx, hall_h - 0.36, lz))])
+	_add_merged(bdg, "HallCeilingLights", ceiling_lights, light_mat)
+	var hall_label := Label3D.new()
+	hall_label.name = "HallName"
+	hall_label.text = station_name
+	hall_label.font_size = 92
+	hall_label.pixel_size = 0.010
+	hall_label.modulate = Color(0.97, 0.95, 0.88)
+	hall_label.outline_size = 13
+	hall_label.outline_modulate = Color(0.05, 0.07, 0.10)
+	hall_label.transform = Transform3D(Basis(), Vector3(outer_x - side * 0.18, 3.5, 2.5))
+	hall_label.rotation.y = -side * PI * 0.5
+	bdg.add_child(hall_label)
+	var hall_light := OmniLight3D.new()
+	hall_light.position = Vector3(0, hall_h - 1.0, 0)
+	hall_light.omni_range = 19.0
+	hall_light.light_energy = 1.25 if Config.quality > Config.Quality.LOW else 0.75
+	hall_light.light_color = Color(1.0, 0.91, 0.76)
+	hall_light.shadow_enabled = false
+	bdg.add_child(hall_light)
 
 	var sign_basis := bdg_basis * Basis(Vector3.UP, -side * PI * 0.5)
 	var sign := _station_sign(station_name)
-	sign.transform = Transform3D(sign_basis, bdg_pos + bdg_basis.x *(-side * 6.72 * bdg_scale) + Vector3.UP * (8.6 * bdg_ys))
+	sign.transform = Transform3D(sign_basis,
+			bdg_pos + bdg_basis.x * (inner_x - side * 0.30) + Vector3.UP * (hall_h - 1.6))
 	group.add_child(sign)
 
 func _add_merged(parent: Node3D, nm: String, items: Array, mat: Material) -> void:
@@ -1706,6 +1925,7 @@ func _prepare_mode_state() -> void:
 			career ["job_finished"] = false
 		else:
 			_localize_job_cargo(current_job)
+			_sanitize_job_indices(current_job)
 			career ["current_job"] = current_job
 		var last_result = career.get("last_result", {})
 		if last_result is Dictionary and not last_result.is_empty():
@@ -1803,6 +2023,25 @@ func _localize_job_cargo(job: Dictionary) -> void:
 			job["cargo"] = "空车皮"
 		"Passengers":
 			job["cargo"] = "旅客"
+
+func _sanitize_job_indices(job: Dictionary) -> void:
+	if job.is_empty() or station_data.is_empty():
+		return
+	var n := station_data.size()
+	var oi := clampi(int(job.get("origin", 0)), 0, n - 1)
+	var di := clampi(int(job.get("dest", (oi + 1) % n)), 0, n - 1)
+	if di == oi:
+		di = (oi + 1) % n
+	job["origin"] = oi
+	job["dest"] = di
+	if route != null:
+		var d0 := Config.station_dist(route, oi)
+		var d1 := Config.station_dist(route, di)
+		var dist := route.wrap_dist(d1 - d0)
+		if dist < 100.0:
+			dist += route.total
+		job["distance"] = dist
+
 
 func _make_job(seed_value: int) -> Dictionary:
 	var rng := RandomNumberGenerator.new()
@@ -1945,6 +2184,7 @@ func apply_custom_consist(cars: Array, locos: int, loaded: bool) -> Dictionary:
 	var door_side := train.door_open_side
 	var cab_door_only := train.cab_door_only
 	var lights := train.head_lights_on
+	var high_beam := train.high_beam_on
 	var handbrake := train.handbrake
 	var brake := train.brake_cylinder
 	var startup_state: Dictionary = startup.serialize() if startup != null else {}
@@ -1974,6 +2214,7 @@ func apply_custom_consist(cars: Array, locos: int, loaded: bool) -> Dictionary:
 	train.cab_door_only = cab_door_only
 	train.door_anim = 0.0
 	train.set_light_state(lights)
+	train.set_high_beam(high_beam)
 	train.handbrake = handbrake
 	train.brake_cylinder = brake
 	train.place()
@@ -2068,6 +2309,7 @@ func apply_customization(new_engine: String, new_skin: String, new_transmission 
 	var door_side := train.door_open_side
 	var cab_door_only := train.cab_door_only
 	var lights := train.head_lights_on
+	var high_beam := train.high_beam_on
 	var handbrake := train.handbrake
 	var brake := train.brake_cylinder
 	var startup_state: Dictionary = startup.serialize() if startup != null else {}
@@ -2085,6 +2327,7 @@ func apply_customization(new_engine: String, new_skin: String, new_transmission 
 	train.cab_door_only = cab_door_only
 	train.door_anim = 0.0
 	train.set_light_state(lights)
+	train.set_high_beam(high_beam)
 	train.handbrake = handbrake
 	train.brake_cylinder = brake
 	train.place()
@@ -2324,7 +2567,7 @@ func _setup_siding() -> void:
 		mission_siding = sidings[0]
 		siding = mission_siding
 		stats ["siding_span"] = float(Config.SIDINGS[0]["end"]) - float(Config.SIDINGS[0]["begin"])
-	_build_yard_office(4)
+	_build_yard_office(2)
 
 
 func _build_siding_mark(sid: Dictionary) -> void:
@@ -2901,7 +3144,7 @@ func _update_autopilot(delta: float) -> void:
 	var stop_d := float(st["stop"])
 	var to_stop := route.wrap_dist(stop_d - train.distance)
 	var signed := _signed_delta(stop_d, train.distance)
-	if absf(signed) < 2.0 and absf(train.speed) < 0.35:
+	if absf(signed) < 3.5 and absf(train.speed) < 0.35:
 		autopilot = false
 		train.notch = 0
 		train.brake_notch = 7
@@ -3081,6 +3324,8 @@ func _handle_input(_delta: float) -> void:
 		_try("停放制动", startup.press("park_brake"))
 	if Input.is_action_just_pressed("headlights"):
 		_toggle_lights()
+	if Input.is_action_just_pressed("high_beam"):
+		_toggle_high_beam()
 	if Input.is_action_just_pressed("wiper") and startup != null:
 		_try("雨刷", startup.press("wiper"))
 	if Input.is_action_just_pressed("horn"):
@@ -3269,9 +3514,20 @@ func _toggle_lights() -> void:
 		var msg := startup.press("headlight")
 		if msg != "":
 			hud.toast(msg, 1.6)
+		train.set_high_beam(false)
 		return
+	train.set_high_beam(false)
 	train.set_light_state(not train.head_lights_on)
 	hud.toast("车灯%s" %("开" if train.head_lights_on else "关"), 1.6)
+
+
+func _toggle_high_beam() -> void:
+	if train == null:
+		return
+	train.set_high_beam(not train.high_beam_on)
+	if startup != null and train.high_beam_on:
+		startup.headlight_on = true
+	hud.toast("远光灯%s" %("开" if train.high_beam_on else "关"), 1.8)
 
 
 func _toggle_map() -> void:
@@ -3356,6 +3612,7 @@ func get_save_data() -> Dictionary:
 			"door_open_side": train.door_open_side,
 			"cab_door_only": train.cab_door_only,
 			"head_lights_on": train.head_lights_on,
+			"high_beam_on": train.high_beam_on,
 			"handbrake": train.handbrake,
 			"brake_cylinder": train.brake_cylinder,
 			"service_name": train.service_name,
@@ -3426,6 +3683,7 @@ func apply_save_data(d: Dictionary) -> void:
 		train.cab_door_only = bool(t.get("cab_door_only", false))
 		train.door_anim = 0.0
 		train.set_light_state(bool(t.get("head_lights_on", true)))
+		train.set_high_beam(bool(t.get("high_beam_on", false)))
 		train.handbrake = bool(t.get("handbrake", false))
 		train.brake_cylinder = float(t.get("brake_cylinder", 0.0))
 		if String(t.get("service_name", "")) != "":

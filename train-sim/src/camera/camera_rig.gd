@@ -29,6 +29,11 @@ var _last_walk_valid := false
 
 var stations: Array = []
 
+func _far_distance(cab: bool) -> float:
+	if Config.quality <= Config.Quality.LOW:
+		return 7600.0 if cab else 10000.0
+	return 14000.0 if cab else 52000.0
+
 var _chase_pos := Vector3.ZERO
 var _chase_look := Vector3.ZERO
 var _free_speed := 30.0
@@ -61,7 +66,7 @@ func setup(p_train: Train, p_route: Route) -> void:
 	camera.name = "MainCamera"
 	camera.fov = clampf(UserSettings.fov, 45.0, 100.0)
 	camera.near = 0.12
-	camera.far = 52000.0
+	camera.far = _far_distance(false)
 	camera.current = true
 	# The rig is driven per rendered frame in _process; interpolating the camera
 	# itself would add a one-tick lag and reintroduce view shake.
@@ -83,7 +88,7 @@ func set_mode(m: Mode, from_cab := false) -> void:
 		_walk_vehicle = -1
 	elif prev != Mode.CAB:
 		_cab_seat = 0
-	camera.far = 14000.0 if m == Mode.CAB else 52000.0
+	camera.far = _far_distance(m == Mode.CAB)
 	camera.cull_mask = (camera.cull_mask & ~(1 << 1)) if m == Mode.CAB else 0xFFFFF
 	_orbit_yaw = 0.0
 	_orbit_pitch = 0.0
@@ -476,7 +481,7 @@ func enter_cab_walk() -> bool:
 	_last_walk_valid = false
 	_restore_cab_visibility()
 	camera.cull_mask = 0xFFFFF
-	camera.far = 52000.0
+	camera.far = _far_distance(false)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	look_toward(xf * Vector3(spawn_x, floor_y + 1.45, float(meta["front"]) + 0.9))
 	return true
@@ -493,7 +498,7 @@ func sit_down(seat := 0) -> bool:
 	_cab_seat = clampi(seat, 0, 1)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	camera.cull_mask = camera.cull_mask & ~(1 << 1)
-	camera.far = 14000.0
+	camera.far = _far_distance(true)
 	_apply_cab_visibility()
 	return true
 
@@ -549,7 +554,7 @@ func _cab_walk_step() -> void:
 			_walk_pos = xf * local
 			_restore_cab_visibility()
 			camera.cull_mask = 0xFFFFF
-			camera.far = 52000.0
+			camera.far = _far_distance(false)
 			return
 	else:
 		local.x = clampf(local.x, -half, half)
@@ -635,7 +640,7 @@ func _train_walk_step() -> void:
 				_walk_pos = xf * local
 				_restore_cab_visibility()
 				camera.cull_mask = 0xFFFFF
-				camera.far = 52000.0
+				camera.far = _far_distance(false)
 				return
 	else:
 		local.z = clampf(local.z, front - gap_prev, back + gap_next)
@@ -658,7 +663,7 @@ func _train_walk_step() -> void:
 				_walk_pos = xf * local
 				_restore_cab_visibility()
 				camera.cull_mask = 0xFFFFF
-				camera.far = 52000.0
+				camera.far = _far_distance(false)
 				return
 		else:
 			local.x = clampf(local.x, -half, half)
@@ -743,7 +748,7 @@ func _platform_at(p: Vector3) -> Dictionary:
 	var rel := p - fr.origin
 	for st: Dictionary in stations:
 		var half_len := float(st.get("platform_len", 220.0)) * 0.5
-		if absf(route.wrap_dist(d - float(st.get("dist", 0.0)))) > half_len:
+		if absf(_signed_dist_delta(d, float(st.get("dist", 0.0)))) > half_len:
 			continue
 		var side := signf(float(st.get("side", 1.0)))
 		var lat := rel.dot(fr.basis.x) * side
@@ -755,13 +760,28 @@ func _platform_at(p: Vector3) -> Dictionary:
 				"lat": lat, "edge": lat_c - half_w, "lat_c": lat_c,
 				"side": side, "frame": fr, "dist": d, "station": st,
 			}
+		# The station hall and its forecourt are continuous with the
+		# platform. The player can walk through the open entrance and around
+		# the ticket hall instead of being stopped by the old solid box.
+		var hall_half := float(st.get("hall_half", 0.0))
+		if hall_half > 0.0:
+			var hall_lat_in := float(st.get("hall_lat_in", 10.0))
+			var hall_lat_out := float(st.get("hall_lat_out", 26.0))
+			if absf(_signed_dist_delta(d, float(st.get("dist", 0.0)))) <= hall_half \
+					and lat >= 7.15 and lat <= hall_lat_out + 0.25:
+				return {
+					"y": fr.origin.y + float(st.get("hall_top", 1.1)),
+					"lat": lat, "edge": 7.15, "lat_c": hall_lat_in,
+					"side": side, "frame": fr, "dist": d, "station": st,
+					"hall": true,
+				}
 		# Freight yards have a separate raised concrete apron. It is not a
 		# station platform, but it needs a walkable top too.
 		var yard_lat := float(st.get("yard_lat", 0.0))
 		var yard_half := float(st.get("yard_half", 0.0))
-		if yard_lat > 0.0 and yard_half > 0.0:
+		if absf(yard_lat) > 0.0 and yard_half > 0.0:
 			var yard_len := float(st.get("yard_len", 100.0))
-			if absf(route.wrap_dist(d - float(st.get("dist", 0.0)))) <= yard_len * 0.5:
+			if absf(_signed_dist_delta(d, float(st.get("dist", 0.0)))) <= yard_len * 0.5:
 				if lat >= yard_lat - yard_half - 0.30 and lat <= yard_lat + yard_half + 0.30:
 					return {
 						"y": fr.origin.y + float(st.get("yard_top", 0.26)),
@@ -772,8 +792,54 @@ func _platform_at(p: Vector3) -> Dictionary:
 
 
 func _resolve_world_collisions(prev_xz: Vector2) -> void:
+	_resolve_station_hall(prev_xz)
 	_resolve_platform_face(prev_xz)
 	_resolve_train_collision()
+
+
+func _signed_dist_delta(d: float, base: float) -> float:
+	var dd := route.wrap_dist(d - base) if route != null and route.closed else d - base
+	if route != null and route.closed and dd > route.total * 0.5:
+		dd -= route.total
+	return dd
+
+
+func _resolve_station_hall(prev_xz: Vector2) -> void:
+	if route == null or stations.is_empty():
+		return
+	var d := route.nearest_dist(_walk_pos)
+	for st: Dictionary in stations:
+		var hall_half := float(st.get("hall_half", 0.0))
+		if hall_half <= 0.0:
+			continue
+		var along := _signed_dist_delta(d, float(st.get("dist", 0.0)))
+		if absf(along) > hall_half:
+			continue
+		var fr := route.frame_at(d)
+		var side := signf(float(st.get("side", 1.0)))
+		var lat := (_walk_pos - fr.origin).dot(fr.basis.x) * side
+		var hall_in := float(st.get("hall_lat_in", 10.0))
+		var hall_out := float(st.get("hall_lat_out", 26.0))
+		if lat < hall_in - 0.4 or lat > hall_out + 0.35:
+			continue
+		var prev_fr := route.frame_at(route.nearest_dist(Vector3(prev_xz.x, _walk_pos.y, prev_xz.y)))
+		var prev_lat := (Vector3(prev_xz.x, _walk_pos.y, prev_xz.y) - prev_fr.origin).dot(prev_fr.basis.x) * side
+		var entry := float(st.get("hall_entry_half", 4.8)) - 0.18
+		# Outer walls and end walls are solid.
+		if lat > hall_out - 0.32 or absf(along) > hall_half - 0.45:
+			_walk_pos.x = prev_xz.x
+			_walk_pos.z = prev_xz.y
+			return
+		# The glazed front is solid too; only the central entrance is open.
+		if absf(along) > entry:
+			if prev_lat < hall_in - 0.20 and lat >= hall_in - 0.20:
+				_walk_pos.x = prev_xz.x
+				_walk_pos.z = prev_xz.y
+				return
+			if prev_lat >= hall_in - 0.20 and lat < hall_in - 0.20:
+				_walk_pos.x = prev_xz.x
+				_walk_pos.z = prev_xz.y
+				return
 
 
 func _resolve_platform_face(prev_xz: Vector2) -> void:
@@ -945,7 +1011,7 @@ func try_board() -> bool:
 	_last_walk_valid = false
 	_restore_cab_visibility()
 	camera.cull_mask = 0xFFFFF
-	camera.far = 52000.0
+	camera.far = _far_distance(false)
 	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
 	look_toward(board_xf * Vector3(0.0, floor_y + 1.4, 0.0))
 	return true

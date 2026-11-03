@@ -3,7 +3,7 @@
 # ASCII only: Windows PowerShell 5.1 console is GBK.
 
 param(
-    [string]$Version = "alpha1.7",
+    [string]$Version = "alpha1.8",
     [string]$NumericVersion = ""
 )
 

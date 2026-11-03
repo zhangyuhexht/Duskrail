@@ -69,8 +69,9 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 	var car_items: Array = []
 	var car_items_b: Array = []
 
-	var block := 38.0 if city else 32.0
-	var road_w := 7.5 if city else 5.5
+	var low := Config.quality <= Config.Quality.LOW
+	var block := (72.0 if low else 54.0) if city else 34.0
+	var road_w := 11.0 if city else 6.0
 	var sidewalk := 2.2
 	var grid := int(radius / block)
 	var concrete_items: Array = []
@@ -123,11 +124,11 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 						mark_items.append([Forge.box(Vector3(0.62, 0.014, rw * 0.72)),
 								Transform3D(Basis(), Vector3(bx - rw * 0.42 + float(k) * 0.44, pad_h + 0.103, bz))])
 				continue
-			if rng.randf() < (0.12 if city else 0.32):
-				if rng.randf() < 0.55:
-					grass_items.append([Forge.box(Vector3(block * 0.58, 0.07, block * 0.58)),
+			if rng.randf() < (0.20 if city else 0.36):
+				if rng.randf() < 0.60:
+					grass_items.append([Forge.box(Vector3(block * 0.66, 0.07, block * 0.66)),
 							Transform3D(Basis(), Vector3(bx, pad_h + 0.08, bz))])
-					for ti in range(rng.randi_range(1, 3)):
+					for ti in range(rng.randi_range(2, 5) if city else rng.randi_range(1, 3)):
 						var tx := bx + rng.randf_range(-block * 0.22, block * 0.22)
 						var tz := bz + rng.randf_range(-block * 0.22, block * 0.22)
 						detail_items.append([Forge.cylinder(0.16, 2.2, 6, 0.0, false, true),
@@ -137,6 +138,8 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 						]), 7, true), Transform3D(Basis(), Vector3(tx, pad_h + 1.9, tz))])
 				continue
 			var count := rng.randi_range(1, 3) if city else rng.randi_range(1, 2)
+			if Config.quality <= Config.Quality.LOW:
+				count = 1
 			for b in range(count):
 				var ox := rng.randf_range(-block * 0.3, block * 0.3)
 				var oz := rng.randf_range(-block * 0.3, block * 0.3)
@@ -147,18 +150,45 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 					continue
 				if Vector2(px - center.x, pz - center.z).length() > radius - 18.0:
 					continue
-				var w := rng.randf_range(10.0, 19.0) if city else rng.randf_range(7.0, 13.0)
-				var dep := rng.randf_range(9.0, 16.0) if city else rng.randf_range(6.0, 11.0)
+				var w := rng.randf_range(17.0, 31.0) if city else rng.randf_range(8.0, 15.0)
+				var dep := rng.randf_range(14.0, 25.0) if city else rng.randf_range(7.0, 13.0)
 				var h := 7.0
+				var podium_h := 0.0
 				if city:
 					var core := 1.0 - clampf(Vector2(px - center.x, pz - center.z).length() / radius, 0.0, 1.0)
-					h = rng.randf_range(8.0, 20.0) + core * rng.randf_range(8.0, 38.0)
+					h = rng.randf_range(12.0, 26.0) + core * rng.randf_range(14.0, 56.0)
+					podium_h = minf(11.0, h * 0.32)
 				else:
 					h = rng.randf_range(5.0, 12.0)
 				var y := pad_h + 0.14
+				var facade_dep := dep * (1.18 if city else 1.0)
 				var wi := rng.randi_range(0, walls.size() - 1)
-				walls_items.append([Forge.box(Vector3(w, h, dep)),
-						Transform3D(Basis(), Vector3(px, y + h * 0.5, pz)), wi])
+				# Bigger city masses read as buildings rather than flat cards:
+				# a wider podium, a full-height tower and a stepped crown give
+				# each block a real silhouette against the sky.
+				if city:
+					walls_items.append([Forge.box(Vector3(w * 1.18, podium_h, dep * 1.18)),
+							Transform3D(Basis(), Vector3(px, y + podium_h * 0.5, pz)), wi])
+					var upper_h := maxf(4.0, h - podium_h)
+					walls_items.append([Forge.box(Vector3(w, upper_h, dep)),
+							Transform3D(Basis(), Vector3(px, y + podium_h + upper_h * 0.5, pz)), wi])
+					if h > 34.0:
+						var crown_h := rng.randf_range(2.5, 6.5)
+						walls_items.append([Forge.box(Vector3(w * 0.58, crown_h, dep * 0.58)),
+								Transform3D(Basis(), Vector3(px, y + h + crown_h * 0.5, pz)), wi])
+						trim_items.append([Forge.box(Vector3(0.22, 2.6, 0.22)),
+								Transform3D(Basis(), Vector3(px + w * 0.18, y + h + crown_h + 1.3, pz + dep * 0.18))])
+						detail_items.append([Forge.box(Vector3(0.8, 0.8, 0.8)),
+								Transform3D(Basis(), Vector3(px - w * 0.18, y + h + crown_h + 0.4, pz - dep * 0.18))])
+					# Deep vertical fins on the street elevations break up the
+					# flat window grid and catch the low sun.
+					if not low:
+						for fx: float in [-0.34, 0.0, 0.34]:
+							trim_items.append([Forge.box(Vector3(0.32, minf(h, 38.0), 1.0)),
+									Transform3D(Basis(), Vector3(px + w * fx, y + minf(h, 38.0) * 0.5, pz + dep * 0.52))])
+				else:
+					walls_items.append([Forge.box(Vector3(w, h, dep)),
+							Transform3D(Basis(), Vector3(px, y + h * 0.5, pz)), wi])
 				if city:
 					roof_items.append([Forge.box(Vector3(w + 0.45, 0.24, dep + 0.45)),
 							Transform3D(Basis(), Vector3(px, y + h + 0.12, pz))])
@@ -184,46 +214,55 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 				var shop_w := w * 0.66
 				for side: float in [-1.0, 1.0]:
 					shop_items.append([Forge.box(Vector3(shop_w, 2.25, 0.065)),
-							Transform3D(Basis(), Vector3(px, y + 1.25, pz + side * (dep * 0.5 + 0.045)))])
+							Transform3D(Basis(), Vector3(px, y + 1.25, pz + side * (facade_dep * 0.5 + 0.045)))])
 					for pane in range(3):
 						trim_items.append([Forge.box(Vector3(0.055, 2.25, 0.08)),
-								Transform3D(Basis(), Vector3(px - shop_w * 0.5 + float(pane) * shop_w / 2.0, y + 1.25, pz + side * (dep * 0.5 + 0.075)))])
+								Transform3D(Basis(), Vector3(px - shop_w * 0.5 + float(pane) * shop_w / 2.0, y + 1.25, pz + side * (facade_dep * 0.5 + 0.075)))])
 					trim_items.append([Forge.box(Vector3(shop_w + 0.5, 0.12, 0.62)),
-							Transform3D(Basis(), Vector3(px, y + 2.55, pz + side * (dep * 0.5 + 0.28)))])
+							Transform3D(Basis(), Vector3(px, y + 2.55, pz + side * (facade_dep * 0.5 + 0.28)))])
 				detail_items.append([Forge.box(Vector3(1.02, 1.95, 0.075)),
-						Transform3D(Basis(), Vector3(px - w * 0.18, y + 1.07, pz + dep * 0.5 + 0.08))])
+						Transform3D(Basis(), Vector3(px - w * 0.18, y + 1.07, pz + facade_dep * 0.5 + 0.08))])
 				var floors := maxi(1, int((h - 1.5) / 3.1))
 				var cols_f := maxi(2, int(w / 2.8))
 				var cols_s := maxi(2, int(dep / 2.8))
 				var pane_w := minf(1.28, w / float(cols_f) * 0.52)
 				var pane_d := minf(1.28, dep / float(cols_s) * 0.52)
-				for f in range(mini(floors, 18)):
+				var floor_step := 2 if low else 1
+				var col_step := 2 if low else 1
+				for f in range(0, mini(floors, 18), floor_step):
 					var wy := y + 2.15 + float(f) * 3.08
 					if wy > y + h - 0.9:
 						break
-					for c in range(cols_f):
+					if city and wy < y + podium_h + 0.7:
+						continue
+					for c in range(0, cols_f, col_step):
 						var wx := px - w * 0.5 + (float(c) + 0.5) * w / float(cols_f)
 						for side: float in [-1.0, 1.0]:
 							var fz := pz + side * (dep * 0.5 + 0.035)
-							trim_items.append([Forge.box(Vector3(pane_w + 0.2, 1.24, 0.035)),
-									Transform3D(Basis(), Vector3(wx, wy, fz))])
+							if not low:
+								trim_items.append([Forge.box(Vector3(pane_w + 0.2, 1.24, 0.035)),
+										Transform3D(Basis(), Vector3(wx, wy, fz))])
 							var wtarget := window_items if rng.randf() < 0.7 else dark_window_items
 							wtarget.append([Forge.box(Vector3(pane_w, 1.0, 0.045)),
 									Transform3D(Basis(), Vector3(wx, wy, fz + side * 0.028))])
-							trim_items.append([Forge.box(Vector3(pane_w + 0.3, 0.08, 0.15)),
-									Transform3D(Basis(), Vector3(wx, wy - 0.62, fz + side * 0.05))])
-					for c in range(cols_s):
+							if not low:
+								trim_items.append([Forge.box(Vector3(pane_w + 0.3, 0.08, 0.15)),
+										Transform3D(Basis(), Vector3(wx, wy - 0.62, fz + side * 0.05))])
+					for c in range(0, cols_s, col_step):
 						var wz := pz - dep * 0.5 + (float(c) + 0.5) * dep / float(cols_s)
 						for side: float in [-1.0, 1.0]:
 							var fx := px + side * (w * 0.5 + 0.035)
-							trim_items.append([Forge.box(Vector3(0.035, 1.24, pane_d + 0.2)),
-									Transform3D(Basis(), Vector3(fx, wy, wz))])
+							if not low:
+								trim_items.append([Forge.box(Vector3(0.035, 1.24, pane_d + 0.2)),
+										Transform3D(Basis(), Vector3(fx, wy, wz))])
 							var starget := window_items if rng.randf() < 0.7 else dark_window_items
 							starget.append([Forge.box(Vector3(0.045, 1.0, pane_d)),
 									Transform3D(Basis(), Vector3(fx + side * 0.028, wy, wz))])
-				if city and h < 38.0 and rng.randf() < 0.45:
+				if city and not low and h < 38.0 and rng.randf() < 0.45:
 					for bf in range(2, mini(floors, 7)):
 						var by := y + 2.15 + float(bf) * 3.08 - 0.72
+						if by < y + podium_h + 0.5:
+							continue
 						trim_items.append([Forge.box(Vector3(w * 0.38, 0.12, 0.92)),
 								Transform3D(Basis(), Vector3(px + w * 0.16, by, pz + dep * 0.5 + 0.42))])
 						for rb in range(4):
@@ -366,8 +405,10 @@ func _add_sign(center: Vector3, pad_h: float, city: bool) -> void:
 
 
 func set_night(amount: float) -> void:
+	var low := Config.quality <= Config.Quality.LOW
 	for l in night_lights:
 		if is_instance_valid(l):
-			l.light_energy = 4.2 * amount
+			l.visible = not low
+			l.light_energy = 0.0 if low else 4.2 * amount
 	if _window_mat != null:
-		_window_mat.emission_energy_multiplier = 0.03 + 1.25 * amount
+		_window_mat.emission_energy_multiplier = 0.03 + (0.55 if low else 1.25) * amount

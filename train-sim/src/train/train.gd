@@ -39,6 +39,7 @@ var brake_force_max := 0.0
 var total_length := 0.0
 var mass := 0.0
 var head_lights_on := true
+var high_beam_on := false
 var pantograph_up := true
 
 
@@ -227,7 +228,15 @@ func set_light_state(on: bool) -> void:
 		var active := on and not bool(v.get_meta("trailing_loco", false))
 		for l in v.head_lights:
 			if is_instance_valid(l):
-				l.visible = active
+				var high := bool(l.get_meta("high_beam", false))
+				l.visible = active and (not high or high_beam_on)
+
+func set_high_beam(on: bool) -> void:
+	high_beam_on = on
+	if on and not head_lights_on:
+		set_light_state(true)
+	else:
+		set_light_state(head_lights_on)
 
 func set_pantograph(up: bool) -> void:
 	pantograph_up = up
