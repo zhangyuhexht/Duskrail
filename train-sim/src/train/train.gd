@@ -1,6 +1,7 @@
 extends Node3D
 class_name Train
 
+const PassengerFlowScript = preload("res://src/train/passenger_flow.gd")
 
 
 signal event(kind: String, data: Dictionary)
@@ -93,6 +94,8 @@ func setup(p_route: Route, p_vehicles: Array) -> void:
 	for v in vehicles:
 		if v != null:
 			v.apply_doors(door_anim if doors_open else 0.0, door_open_side)
+			if v.kind == "coach" and v.get_node_or_null("PassengerFlow") == null:
+				PassengerFlowScript.attach(v)
 	set_light_state(true)
 
 

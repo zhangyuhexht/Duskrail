@@ -3,7 +3,7 @@ extends Node3D
 
 
 const GAME_NAME := "Duskrail"
-const VERSION := "alpha1.9"
+const VERSION := "alpha1.10"
 const LOADING_SCREEN := preload("res://src/ui/loading_screen.gd")
 
 var shot_path := ""
@@ -148,6 +148,8 @@ func _after_boot() -> void:
 		return
 	if _test_mode_test and _qa_new_mode == "":
 		_qa_new_mode = "test"
+	if _alpha110_test and _qa_new_mode == "":
+		_qa_new_mode = "open"
 	if _qa_new_mode != "":
 		var qid := SaveManager.new_slot_id()
 		var qstate := {"__new": true, "version": SaveManager.VERSION, "mode": _qa_new_mode, "world": {"time_of_day": 10.4}}
@@ -159,10 +161,16 @@ func _after_boot() -> void:
 		_start_game()
 		if _qa_career_panel and game != null:
 			game.open_career_panel()
+			if _qa_career_tab != "" and game.career_panel != null:
+				game.career_panel._tab = _qa_career_tab
+				game.career_panel.refresh()
 		if _qa_tuning_panel and game != null:
 			game.open_tuning_panel(_qa_tuning_category)
 		if _test_mode_test and game != null:
 			await _run_test_mode_test()
+			return
+		if _alpha110_test and game != null:
+			await _run_alpha110_test()
 			return
 		if shot_path != "":
 			await get_tree().process_frame
@@ -318,6 +326,9 @@ func _parse_cmdline() -> void:
 			_qa_new_mode = a.trim_prefix("--new-mode=")
 		elif a == "--career-panel":
 			_qa_career_panel = true
+		elif a.begins_with("--career-tab="):
+			_qa_career_tab = a.trim_prefix("--career-tab=")
+			_qa_career_panel = true
 		elif a == "--tuning-panel":
 			_qa_tuning_panel = true
 		elif a == "--tuning-preview-test":
@@ -412,6 +423,8 @@ func _parse_cmdline() -> void:
 			_consist_ui_test = true
 		elif a == "--test-mode-test":
 			_test_mode_test = true
+		elif a == "--alpha110-test":
+			_alpha110_test = true
 		elif a == "--walk-test":
 			_walk_test = true
 		elif a == "--train-walk-test":
@@ -459,6 +472,7 @@ var _qa_new := false
 var _qa_confirm := false
 var _qa_new_mode := ""
 var _qa_career_panel := false
+var _qa_career_tab := ""
 var _qa_tuning_panel := false
 var _qa_tuning_category := "parts"
 var _tuning_preview_test := false
@@ -490,6 +504,7 @@ var _qa_consist_select := -1
 var _consist_load_test := false
 var _consist_ui_test := false
 var _test_mode_test := false
+var _alpha110_test := false
 var _walk_test := false
 var _train_walk_test := false
 var _legacy_save_test := false
@@ -1013,6 +1028,109 @@ func _rect_gap(a: PackedVector2Array, b: PackedVector2Array) -> float:
 		for i in range(a.size()):
 			best = minf(best, _point_seg_dist(p, a[i], a[(i + 1) % a.size()]))
 	return best
+
+
+func _run_alpha110_test() -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame
+	if game == null or game.train == null or game.rig == null:
+		print("[alpha110-test] FAIL missing game")
+		get_tree().quit(1)
+		return
+	var branch_count := 0
+	for st: Dictionary in game.station_data:
+		if bool(st.get("branch", false)):
+			branch_count += 1
+	var stations_ok := game.station_data.size() == 7 and branch_count == 2
+	var presets: Array = game.get_preset_missions()
+	var presets_ok := presets.size() >= 6
+	for job: Dictionary in presets:
+		if float(job.get("distance", 0.0)) <= 0.0:
+			presets_ok = false
+	var hall_ok := game.hall_spots.size() >= 20 \
+			and game.hall_gates.size() == 28 and game.hall_belts.size() == 14
+	var street_ok := game.street_lives.size() > 0
+	var street_cars := 0
+	var street_peds := 0
+	for sl in game.street_lives:
+		if sl == null:
+			continue
+		var cars_arr: Array = sl.get("_cars")
+		var peds_arr: Array = sl.get("_peds")
+		street_cars += cars_arr.size()
+		street_peds += peds_arr.size()
+	var gate: Dictionary = game.hall_gates[0] if not game.hall_gates.is_empty() else {}
+	var gate_block := false
+	var gate_open_ok := false
+	if not gate.is_empty():
+		var gn := gate["node"] as Node3D
+		gn.set_meta("gate_open", false)
+		var gx := gn.global_transform * Vector3(0, 0.6, 0)
+		game.rig._walk_pos = gx
+		game.rig._resolve_hall_gates(Vector2(gx.x - 0.4, gx.z))
+		gate_block = game.rig._walk_pos.distance_to(gx) > 0.2
+		game._open_station_gates(0, 5.0)
+		gn.set_meta("gate_open", true)
+		game.rig._walk_pos = gx
+		game.rig._resolve_hall_gates(Vector2(gx.x - 0.4, gx.z))
+		gate_open_ok = game.rig._walk_pos.distance_to(gx) < 0.01
+	var ticket_ok := false
+	var shop_ok := false
+	game.rig._on_foot = true
+	game.hall_ticket_until = 0.0
+	for spot: Dictionary in game.hall_spots:
+		if int(spot.get("station", -1)) == 0 and String(spot.get("type", "")) == "ticket":
+			game.rig._walk_pos = spot["pos"]
+			game._handle_hall_interact()
+			ticket_ok = game.hall_ticket_until > Time.get_ticks_msec() / 1000.0
+			break
+	game.coffee_until = 0.0
+	for spot: Dictionary in game.hall_spots:
+		if int(spot.get("station", -1)) == 0 and String(spot.get("type", "")) == "shop":
+			game.rig._walk_pos = spot["pos"]
+			game._handle_hall_interact()
+			shop_ok = game.coffee_until > Time.get_ticks_msec() / 1000.0
+			break
+	game.rig._on_foot = false
+	# Passenger preset: rebuild with coaches, check seated passengers exist and
+	# the boarding flow starts when doors open at a platform.
+	game.start_preset(2)
+	await get_tree().process_frame
+	var coaches := 0
+	var passenger_nodes := 0
+	var flow_ok := false
+	for v in game.train.vehicles:
+		if v.kind == "coach":
+			coaches += 1
+			var pf := v.get_node_or_null("PassengerFlow")
+			if pf != null:
+				for c in pf.get_children():
+					if String(c.name).begins_with("Passenger"):
+						passenger_nodes += 1
+				if not flow_ok:
+					game.train.speed = 0.0
+					game.train.handbrake = true
+					game.train.doors_open = true
+					game.train.door_open_side = 1
+					pf._begin_cycle()
+					pf._spawn_pending()
+					var walkers_arr: Array = pf.get("_walkers")
+					flow_ok = walkers_arr.size() > 0
+					game.train.doors_open = false
+					game.train.door_open_side = 0
+	var passengers_ok := coaches >= 4 and passenger_nodes >= 20 and flow_ok
+	game.start_free_drive()
+	game.free_drive_goto(5)
+	var free_ok := game.free_drive and absf(game.train.distance - float(game.station_data[5]["stop"])) < 0.2
+	print("[alpha110-test] stations=%s presets=%s hall=%s streets=%s cars=%d peds=%d gate_block=%s gate_open=%s ticket=%s shop=%s passengers=%s coaches=%d pax_nodes=%d free=%s" %[
+		str(stations_ok), str(presets_ok), str(hall_ok), str(street_ok), street_cars, street_peds,
+		str(gate_block), str(gate_open_ok), str(ticket_ok), str(shop_ok),
+		str(passengers_ok), coaches, passenger_nodes, str(free_ok)])
+	var ok := stations_ok and presets_ok and hall_ok and street_ok and street_cars > 0 \
+			and street_peds > 0 and gate_block and gate_open_ok and ticket_ok and shop_ok \
+			and passengers_ok and free_ok
+	print("[alpha110-test] ok=%s" %str(ok))
+	get_tree().quit(0 if ok else 1)
 
 
 func _run_walk_test() -> void:
@@ -1952,6 +2070,22 @@ func _capture_and_quit() -> void:
 					var target := hf.origin + hf.basis.x * (hs * 23.0) + hf.basis.z * (-4.0) + Vector3.UP * 2.4
 					pc.global_position = hf.origin + hf.basis.x * (hs * 12.4) + hf.basis.z * 8.0 + Vector3.UP * 2.8
 					pc.look_at(target)
+			elif _qa_part_cam == "hall-gate":
+				if not game.hall_gates.is_empty():
+					var gn := game.hall_gates[1]["node"] as Node3D
+					var look_at_p := gn.global_transform * Vector3(0, 0.95, 0)
+					pc.global_position = gn.global_transform * Vector3(-5.2, 2.15, 0)
+					pc.look_at(look_at_p)
+			elif _qa_part_cam == "city-street":
+				if not game.settlement_sites.is_empty():
+					var cs: Dictionary = {}
+					for site: Dictionary in game.settlement_sites:
+						if String(site.get("kind", "")) == "city":
+							cs = site
+							break
+					var cc: Vector3 = cs.get("center", Vector3.ZERO)
+					pc.global_position = cc + Vector3(-30.0, 11.0, 44.0)
+					pc.look_at(cc + Vector3(20.0, 2.0, -12.0))
 			elif _qa_part_cam == "city-viaduct":
 				pc.far = 2200.0
 				var vd: float = game.route.total * 0.44

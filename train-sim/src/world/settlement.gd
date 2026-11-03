@@ -1,6 +1,8 @@
 extends Node3D
 class_name Settlement
 
+const StreetLifeScript = preload("res://src/world/street_life.gd")
+
 
 var night_windows: Array [GeometryInstance3D] = []
 var night_lights: Array [OmniLight3D] = []
@@ -8,6 +10,7 @@ var _window_mat: StandardMaterial3D
 var _lamp_mat: StandardMaterial3D
 var _trim_mat: StandardMaterial3D
 var _curb_mat: StandardMaterial3D
+var street_life: Node3D
 
 
 static func build(parent: Node3D, route: Route, site: Dictionary, yield_frames := false) -> Settlement:
@@ -338,6 +341,7 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 	_add_merged(car_items, car_a, "CityCarsA")
 	_add_merged(car_items_b, car_b, "CityCarsB")
 	_add_merged(lamp_items, Gfx.metal(Color(0.28, 0.29, 0.3), 0.5, 0.6), "CityLamps")
+	street_life = StreetLifeScript.attach(self, route, site, block, road_w)
 	var wmi := _add_merged(window_items, _window_mat, "CityWindows")
 	if wmi != null:
 		wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

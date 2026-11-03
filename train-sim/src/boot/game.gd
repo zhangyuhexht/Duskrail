@@ -36,6 +36,45 @@ const CAREER_CATALOG := [
 		"desc": "HXD1 电力机车 + 8 辆集装箱平车"},
 	{"id": "hopper", "name": "HXD1 空车货列", "kind": "hopper", "price": 0, "level": 1,
 		"desc": "HXD1 电力机车 + 8 辆空敞车"},
+	{"id": "passenger", "name": "HXD1 旅客列车", "kind": "passenger", "price": 48000, "level": 3,
+		"desc": "HXD1 电力机车 + 6 节 25T 载客车厢"},
+]
+
+# Hand-authored jobs shown in the mission centre. Quick jobs remain random;
+# these presets are stable, have a fixed train type and are also used by QA.
+const PRESET_MISSIONS := [
+	{"id": "p1", "title": "山川港集装箱", "number": "X1001", "kind": "container",
+		"cargo": "集装箱", "unit": "t", "loaded": true, "weight": 760.0,
+		"origin": 0, "dest": 1, "limit": 85.0, "load_time": 24.0,
+		"unload_time": 18.0, "reward": 7200.0, "time_limit": 2400.0},
+	{"id": "p2", "title": "临江空车回送", "number": "X1002", "kind": "hopper",
+		"cargo": "空车皮", "unit": "t", "loaded": false, "weight": 300.0,
+		"origin": 1, "dest": 2, "limit": 90.0, "load_time": 8.0,
+		"unload_time": 7.0, "reward": 5200.0, "time_limit": 2100.0},
+	{"id": "p3", "title": "青川城际旅客", "number": "K1003", "kind": "passenger",
+		"cargo": "旅客", "unit": "人", "loaded": true, "weight": 708.0,
+		"origin": 2, "dest": 3, "limit": 120.0, "load_time": 30.0,
+		"unload_time": 28.0, "reward": 9800.0, "time_limit": 1800.0},
+	{"id": "p4", "title": "雁归建材专列", "number": "X1004", "kind": "container",
+		"cargo": "集装箱", "unit": "t", "loaded": true, "weight": 760.0,
+		"origin": 3, "dest": 4, "limit": 80.0, "load_time": 24.0,
+		"unload_time": 18.0, "reward": 5600.0, "time_limit": 2200.0},
+	{"id": "p5", "title": "青石—云溪小运转", "number": "K1005", "kind": "passenger",
+		"cargo": "旅客", "unit": "人", "loaded": true, "weight": 708.0,
+		"origin": 4, "dest": 5, "limit": 100.0, "load_time": 24.0,
+		"unload_time": 22.0, "reward": 6200.0, "time_limit": 1500.0},
+	{"id": "p6", "title": "云溪—石门空车", "number": "X1006", "kind": "hopper",
+		"cargo": "空车皮", "unit": "t", "loaded": false, "weight": 300.0,
+		"origin": 5, "dest": 6, "limit": 80.0, "load_time": 8.0,
+		"unload_time": 7.0, "reward": 3600.0, "time_limit": 1500.0},
+	{"id": "p7", "title": "石门—山川环线集装箱", "number": "X1007", "kind": "container",
+		"cargo": "集装箱", "unit": "t", "loaded": true, "weight": 760.0,
+		"origin": 6, "dest": 0, "limit": 85.0, "load_time": 24.0,
+		"unload_time": 18.0, "reward": 7800.0, "time_limit": 2400.0},
+	{"id": "p8", "title": "山川—青川直通旅客", "number": "K1008", "kind": "passenger",
+		"cargo": "旅客", "unit": "人", "loaded": true, "weight": 708.0,
+		"origin": 0, "dest": 2, "limit": 120.0, "load_time": 30.0,
+		"unload_time": 28.0, "reward": 11000.0, "time_limit": 2400.0},
 ]
 
 const RIVER := [
@@ -79,6 +118,14 @@ var _ai_horn_cooldown := 0.0
 var station_data: Array = []
 var settlement_sites: Array = []
 var settlements: Array = []
+var street_lives: Array = []
+var hall_spots: Array = []
+var hall_gates: Array = []
+var hall_belts: Array = []
+var hall_ticket_until := 0.0
+var coffee_until := 0.0
+var free_drive := false
+var _free_resume_job: Dictionary = {}
 var station_lights: Array [OmniLight3D] = []
 var reflection_probe: ReflectionProbe
 var _probe_accum := 0.0
@@ -330,6 +377,7 @@ func _build_stations_async() -> void:
 			"freight": freight,
 			"settlement": String(info.get("settlement", "halt")),
 			"population": int(info.get("population", 0)),
+			"branch": bool(info.get("branch", false)),
 			"index": i,
 		}
 		station_data.append(station)
@@ -357,7 +405,7 @@ func _build_stations_async() -> void:
 			station ["yard_half"] = 6.5
 			station ["yard_len"] = clampf(platform_len * 0.65, 80.0, 150.0)
 			station ["yard_top"] = 0.26
-		await _build_station(d, info ["name"], side, freight, platform_len, settlement, true)
+		await _build_station(d, info ["name"], side, freight, platform_len, settlement, i, true)
 		_build_stop_mark(stop, side, info ["name"])
 		if freight:
 			station_data [i] ["hoist"] = _build_freight_yard(d, -side, info ["name"], platform_len)
@@ -1229,6 +1277,7 @@ func _build_stations() -> void:
 			"freight": freight,
 			"settlement": String(info.get("settlement", "halt")),
 			"population": int(info.get("population", 0)),
+			"branch": bool(info.get("branch", false)),
 			"index": i,
 		}
 		station_data.append(station)
@@ -1256,7 +1305,7 @@ func _build_stations() -> void:
 			station ["yard_half"] = 6.5
 			station ["yard_len"] = clampf(platform_len * 0.65, 80.0, 150.0)
 			station ["yard_top"] = 0.26
-		_build_station(d, info ["name"], side, freight, platform_len, settlement)
+		_build_station(d, info ["name"], side, freight, platform_len, settlement, i)
 		_build_stop_mark(stop, side, info ["name"])
 		if freight:
 			station_data [i] ["hoist"] = _build_freight_yard(d, -side, info ["name"], platform_len)
@@ -1274,6 +1323,8 @@ func _build_settlement(station: Dictionary, yield_frames := false) -> void:
 			else:
 				s = Settlement.build(self, route, site)
 			settlements.append(s)
+			if s.street_life != null:
+				street_lives.append(s.street_life)
 
 func _build_stop_mark(dist: float, side: float, station_name := "") -> void:
 	var group := Node3D.new()
@@ -1399,7 +1450,7 @@ func _build_freight_yard(dist: float, side: float, station_name: String, platfor
 
 
 func _build_station(dist: float, station_name: String, side: float, freight := false, platform_len := 220.0,
-		settlement := "halt", yield_frames := false) -> void:
+		settlement := "halt", station_index := -1, yield_frames := false) -> void:
 	var group := Node3D.new()
 	group.name = "Station_" + station_name
 	railway.add_child(group)
@@ -1913,6 +1964,192 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	_add_merged(bdg, "HallProps", hall_props, Gfx.interior_panel(Color(0.30, 0.32, 0.34), 0.55))
 	_add_merged(bdg, "HallKiosks", shop_props, Gfx.interior_panel(Color(0.42, 0.38, 0.32), 0.64))
 	_add_merged(bdg, "HallScreens", screen_props, Gfx.emissive(Color(0.24, 0.52, 0.72), 0.75, Color(0.02, 0.04, 0.05)))
+
+	# --- Interactive station hall ---------------------------------------
+	# Ticket machine on the platform side of the gates, four ticket gates,
+	# two automatic walkways and two coffee kiosks. The gate leaves and the
+	# walkway steps are real nodes because they animate; everything else is
+	# merged into the hall mesh.
+	var gate_steel := Gfx.metal(Color(0.34, 0.37, 0.40), 0.38, 0.78)
+	var gate_glass := Gfx.glass(Color(0.13, 0.22, 0.28), 0.055, 0.30)
+	var gate_led := Gfx.emissive(Color(0.18, 0.78, 0.46), 1.15, Color(0.01, 0.08, 0.03))
+	var ticket_body := Gfx.paint(Color(0.70, 0.73, 0.75), 0.35, 0.18, 0.42)
+	var ticket_screen := Gfx.emissive(Color(0.24, 0.56, 0.78), 0.9, Color(0.01, 0.04, 0.06))
+	var belt_base := Gfx.metal(Color(0.16, 0.18, 0.20), 0.55, 0.52)
+	var belt_step := Gfx.metal(Color(0.34, 0.36, 0.39), 0.42, 0.68)
+	var ticket_local := Vector3(inner_x - side * 1.55, 0.0, -entry_half - 1.55)
+	var ticket_node := Node3D.new()
+	ticket_node.name = "TicketMachine"
+	ticket_node.position = ticket_local
+	bdg.add_child(ticket_node)
+	_add_merged(ticket_node, "TicketMachineBody", [
+		[Forge.box(Vector3(0.92, 1.78, 0.58)), Transform3D(Basis(), Vector3(0, 0.89, 0))],
+		[Forge.box(Vector3(1.02, 0.10, 0.66)), Transform3D(Basis(), Vector3(0, 1.82, 0))],
+		[Forge.box(Vector3(0.58, 0.20, 0.30)), Transform3D(Basis(), Vector3(0, 1.10, 0.18))]
+	], ticket_body)
+	_add_merged(ticket_node, "TicketMachineScreen", [
+		[Forge.box(Vector3(0.05, 0.52, 0.70)),
+			Transform3D(Basis(), Vector3(-side * 0.47, 1.18, 0))]
+	], ticket_screen)
+	var ticket_label := Label3D.new()
+	ticket_label.text = "自动售票机\nE 取票"
+	ticket_label.font_size = 34
+	ticket_label.pixel_size = 0.0028
+	ticket_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	ticket_label.modulate = Color(0.82, 0.94, 1.0)
+	ticket_label.outline_size = 6
+	ticket_label.outline_modulate = Color(0.02, 0.04, 0.07)
+	ticket_label.position = Vector3(0, 2.16, 0)
+	ticket_node.add_child(ticket_label)
+	hall_spots.append({
+		"type": "ticket", "station": station_index,
+		"pos": bdg.to_global(ticket_local + Vector3(-side * 0.55, 1.05, 0)),
+		"name": "自动售票机",
+	})
+
+	var gate_x := inner_x - side * 0.45
+	var gate_index := 0
+	var gate_leaf_mesh := Forge.box(Vector3(0.05, 1.34, 0.94))
+	var gate_leaf_vframe := Forge.box(Vector3(0.065, 1.34, 0.035))
+	var gate_leaf_hframe := Forge.box(Vector3(0.065, 0.035, 0.94))
+	for gz: float in [-3.6, -1.2, 1.2, 3.6]:
+		var gate := Node3D.new()
+		gate.name = "TicketGate%d" %gate_index
+		gate.position = Vector3(gate_x, 0, gz)
+		bdg.add_child(gate)
+		var gate_parts := []
+		for pz: float in [-1.08, 1.08]:
+			gate_parts.append([Forge.box(Vector3(0.30, 1.62, 0.16)),
+				Transform3D(Basis(), Vector3(0, 0.81, pz))])
+			gate_parts.append([Forge.box(Vector3(0.52, 0.08, 0.48)),
+				Transform3D(Basis(), Vector3(0, 0.04, pz))])
+		gate_parts.append([Forge.box(Vector3(0.32, 0.16, 2.34)),
+			Transform3D(Basis(), Vector3(0, 1.60, 0))])
+		gate_parts.append([Forge.box(Vector3(0.12, 0.05, 1.92)),
+			Transform3D(Basis(), Vector3(0, 1.52, 0))])
+		_add_merged(gate, "GateFrame", gate_parts, gate_steel)
+		_add_merged(gate, "GateLed", [
+			[Forge.box(Vector3(0.06, 0.05, 1.88)),
+				Transform3D(Basis(), Vector3(-side * 0.17, 1.53, 0))]
+		], gate_led)
+		for leaf_i in range(2):
+			var leaf := MeshInstance3D.new()
+			leaf.name = "GateLeaf%d" %leaf_i
+			leaf.mesh = gate_leaf_mesh
+			leaf.material_override = gate_glass
+			leaf.position = Vector3(0, 0.78, -0.49 if leaf_i == 0 else 0.49)
+			leaf.set_meta("leaf_base_z", leaf.position.z)
+			leaf.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			for fz: float in [-0.45, 0.45]:
+				var edge := MeshInstance3D.new()
+				edge.mesh = gate_leaf_vframe
+				edge.material_override = gate_steel
+				edge.position = Vector3(0, 0, fz)
+				leaf.add_child(edge)
+			for fy: float in [-0.66, 0.66]:
+				var edge2 := MeshInstance3D.new()
+				edge2.mesh = gate_leaf_hframe
+				edge2.material_override = gate_steel
+				edge2.position = Vector3(0, fy, 0)
+				leaf.add_child(edge2)
+			gate.add_child(leaf)
+		gate.set_meta("gate_open", false)
+		gate.set_meta("gate_station", station_index)
+		hall_gates.append({
+			"node": gate, "station": station_index, "open_until": 0.0,
+			"anim": 0.0, "half_w": 1.18, "half_d": 0.30,
+		})
+		hall_spots.append({
+			"type": "gate", "station": station_index,
+			"pos": bdg.to_global(Vector3(gate_x, 1.10, gz)),
+			"name": "检票闸机",
+		})
+		gate_index += 1
+	var gate_label := Label3D.new()
+	gate_label.text = "检票口  E 验票通过"
+	gate_label.font_size = 36
+	gate_label.pixel_size = 0.0028
+	gate_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	gate_label.modulate = Color(0.66, 1.0, 0.78)
+	gate_label.outline_size = 6
+	gate_label.outline_modulate = Color(0.02, 0.05, 0.04)
+	gate_label.position = bdg.to_global(Vector3(gate_x, 2.45, 0))
+	group.add_child(gate_label)
+
+	for tz: float in [-10.0, 10.0]:
+		hall_spots.append({
+			"type": "ticket", "station": station_index,
+			"pos": bdg.to_global(Vector3(inner_x + side * 0.95, 1.30, tz)),
+			"name": "自动售票机",
+		})
+
+	for sz: float in [-15.0, 15.0]:
+		hall_spots.append({
+			"type": "shop", "station": station_index,
+			"pos": bdg.to_global(Vector3(outer_x - side * 3.05, 1.15, sz)),
+			"name": "车站咖啡", "price": 15,
+		})
+		var shop_label := Label3D.new()
+		shop_label.text = "咖啡 / 热饮  ¥15\nE 购买"
+		shop_label.font_size = 32
+		shop_label.pixel_size = 0.0027
+		shop_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		shop_label.modulate = Color(1.0, 0.86, 0.55)
+		shop_label.outline_size = 6
+		shop_label.outline_modulate = Color(0.06, 0.035, 0.01)
+		shop_label.position = bdg.to_global(Vector3(outer_x - side * 3.05, 2.75, sz))
+		group.add_child(shop_label)
+
+	# Automatic walkways: flat escalator-style belts with moving treads.
+	var belt_specs := [
+		{"x": outer_x - side * 2.45, "dir": 1.0, "name": "WalkwayA"},
+		{"x": outer_x - side * 4.20, "dir": -1.0, "name": "WalkwayB"},
+	]
+	var belt_step_mesh := Forge.box(Vector3(1.30, 0.045, 0.56))
+	for spec: Dictionary in belt_specs:
+		var belt := Node3D.new()
+		belt.name = String(spec["name"])
+		belt.position = Vector3(float(spec["x"]), 0, 0)
+		bdg.add_child(belt)
+		_add_merged(belt, "WalkwayBase", [
+			[Forge.box(Vector3(1.48, 0.16, 16.4)), Transform3D(Basis(), Vector3(0, 0.08, 0))],
+			[Forge.box(Vector3(0.10, 0.28, 16.4)), Transform3D(Basis(), Vector3(-0.74, 0.20, 0))],
+			[Forge.box(Vector3(0.10, 0.28, 16.4)), Transform3D(Basis(), Vector3(0.74, 0.20, 0))]
+		], belt_base)
+		_add_merged(belt, "WalkwayRails", [
+			[Forge.box(Vector3(0.06, 0.06, 16.0)), Transform3D(Basis(), Vector3(-0.78, 0.55, 0))],
+			[Forge.box(Vector3(0.06, 0.06, 16.0)), Transform3D(Basis(), Vector3(0.78, 0.55, 0))],
+			[Forge.box(Vector3(0.06, 0.05, 0.06)), Transform3D(Basis(), Vector3(-0.78, 0.31, -8.0))],
+			[Forge.box(Vector3(0.06, 0.05, 0.06)), Transform3D(Basis(), Vector3(0.78, 0.31, -8.0))],
+			[Forge.box(Vector3(0.06, 0.05, 0.06)), Transform3D(Basis(), Vector3(-0.78, 0.31, 8.0))],
+			[Forge.box(Vector3(0.06, 0.05, 0.06)), Transform3D(Basis(), Vector3(0.78, 0.31, 8.0))]
+		], gate_steel)
+		var steps: Array = []
+		for si in range(28):
+			var step := MeshInstance3D.new()
+			step.name = "Step%d" %si
+			step.mesh = belt_step_mesh
+			step.material_override = belt_step
+			step.position = Vector3(0, 0.115, -8.0 + float(si) * 16.0 / 28.0)
+			step.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			belt.add_child(step)
+			steps.append(step)
+		hall_belts.append({
+			"node": belt, "station": station_index, "steps": steps,
+			"dir": float(spec["dir"]), "speed": 1.9,
+			"half_x": 0.72, "half_z": 8.0, "carry": 1.35,
+		})
+		var belt_label := Label3D.new()
+		belt_label.text = "自动步道  ▶" if float(spec["dir"]) > 0.0 else "◀  自动步道"
+		belt_label.font_size = 30
+		belt_label.pixel_size = 0.0026
+		belt_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		belt_label.modulate = Color(0.64, 0.90, 1.0)
+		belt_label.outline_size = 5
+		belt_label.outline_modulate = Color(0.01, 0.03, 0.06)
+		belt_label.position = bdg.to_global(Vector3(float(spec["x"]), 2.05, 0))
+		group.add_child(belt_label)
+
 	var depart := MeshInstance3D.new()
 	depart.name = "HallDepartureBoard"
 	depart.mesh = Forge.box(Vector3(6.6, 0.75, 0.12))
@@ -1939,6 +2176,18 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	hall_label.transform = Transform3D(Basis(), Vector3(outer_x - side * 0.18, 3.5, 2.5))
 	hall_label.rotation.y = -side * PI * 0.5
 	bdg.add_child(hall_label)
+	if station_index >= 0 and station_index < Config.STATIONS.size() \
+			and bool(Config.STATIONS[station_index].get("branch", false)):
+		var branch_label := Label3D.new()
+		branch_label.text = "东环支线"
+		branch_label.font_size = 44
+		branch_label.pixel_size = 0.0055
+		branch_label.modulate = Color(0.48, 0.80, 1.0)
+		branch_label.outline_size = 7
+		branch_label.outline_modulate = Color(0.04, 0.08, 0.14)
+		branch_label.transform = Transform3D(Basis(), Vector3(outer_x - side * 0.18, 2.55, 2.5))
+		branch_label.rotation.y = -side * PI * 0.5
+		bdg.add_child(branch_label)
 	var hall_light := OmniLight3D.new()
 	hall_light.position = Vector3(0, hall_h - 1.0, 0)
 	hall_light.omni_range = 19.0
@@ -1947,11 +2196,77 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	hall_light.shadow_enabled = false
 	bdg.add_child(hall_light)
 
+	# Waiting passengers: merged low-poly figures, so the hall and platform
+	# feel occupied without adding hundreds of nodes or dynamic draw calls.
+	var crowd_spots := []
+	var crowd_count := 6 if Config.quality <= Config.Quality.LOW else 12
+	for k in range(crowd_count):
+		var px := -2.5 + fmod(float(k) * 2.35, 5.0)
+		var pz := -14.0 + fmod(float(k) * 5.15, 28.0)
+		if absf(px) < 1.4 and absf(pz) < 4.5:
+			px += 2.2
+		crowd_spots.append({
+			"pos": Vector3(px, 0.0, pz),
+			"standing": k % 3 == 0,
+			"angle": -side * PI * 0.5 if k % 2 == 0 else side * PI * 0.5,
+		})
+	_add_crowd(bdg, crowd_spots, 3101 + station_index)
+	var platform_crowd := []
+	var platform_people := 5 if Config.quality <= Config.Quality.LOW else 9
+	for k in range(platform_people):
+		var pd := dist - platform_len * 0.38 + float(k) * platform_len * 0.095
+		var pf := route.frame_at(pd)
+		var pp := pf.origin + pf.basis.x * (side * (lat_c + 1.45)) \
+				+ pf.basis.z * (float(k % 3) - 1.0) * 1.6 + Vector3.UP * top
+		platform_crowd.append({
+			"pos": pp, "standing": k % 4 != 0,
+			"angle": pf.basis.get_euler().y + (0.4 if k % 2 == 0 else -0.3),
+		})
+	_add_crowd(group, platform_crowd, 5101 + station_index)
+
 	var sign_basis := bdg_basis * Basis(Vector3.UP, -side * PI * 0.5)
 	var sign := _station_sign(station_name)
 	sign.transform = Transform3D(sign_basis,
 			bdg_pos + bdg_basis.x * (inner_x - side * 0.30) + Vector3.UP * (hall_h - 1.6))
 	group.add_child(sign)
+
+func _add_crowd(parent: Node3D, spots: Array, seed_value: int) -> void:
+	if spots.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var coats := [
+		Gfx.paint(Color(0.12, 0.18, 0.27), 0.62, 0.04, 0.16),
+		Gfx.paint(Color(0.38, 0.17, 0.14), 0.62, 0.04, 0.16),
+		Gfx.paint(Color(0.30, 0.33, 0.30), 0.64, 0.03, 0.14),
+	]
+	var skin := Gfx.paint(Color(0.76, 0.60, 0.46), 0.6, 0.02, 0.12)
+	var groups := [[], [], []]
+	var heads := []
+	for spot: Dictionary in spots:
+		var p: Vector3 = spot.get("pos", Vector3.ZERO)
+		var b := Basis(Vector3.UP, float(spot.get("angle", 0.0)))
+		var standing := bool(spot.get("standing", true))
+		var gi := rng.randi_range(0, 2)
+		if standing:
+			for lx: float in [-0.09, 0.09]:
+				groups[gi].append([Forge.box(Vector3(0.13, 0.55, 0.16)),
+					Transform3D(b, p + b * Vector3(lx, 0.29, 0))])
+			groups[gi].append([Forge.box(Vector3(0.36, 0.66, 0.24)),
+				Transform3D(b, p + b * Vector3(0, 0.91, 0))])
+			groups[gi].append([Forge.box(Vector3(0.30, 0.12, 0.30)),
+				Transform3D(b, p + b * Vector3(0, 1.22, 0))])
+			heads.append([Forge.box(Vector3(0.18, 0.21, 0.18)),
+				Transform3D(b, p + b * Vector3(0, 1.42, 0))])
+		else:
+			groups[gi].append([Forge.box(Vector3(0.39, 0.52, 0.27)),
+				Transform3D(b, p + b * Vector3(0, 0.86, 0))])
+			heads.append([Forge.box(Vector3(0.18, 0.21, 0.18)),
+				Transform3D(b, p + b * Vector3(0, 1.23, 0))])
+	for gi in range(3):
+		_add_merged(parent, "WaitingPeople%d" %gi, groups[gi], coats[gi])
+	_add_merged(parent, "WaitingPeopleHeads", heads, skin)
+
 
 func _add_merged(parent: Node3D, nm: String, items: Array, mat: Material) -> void:
 	if items.is_empty():
@@ -2001,6 +2316,7 @@ func _station_sign(text: String, with_posts := false) -> Node3D:
 
 func _prepare_mode_state() -> void:
 	mode = String(initial_state.get("mode", "open"))
+	free_drive = bool(initial_state.get("free_drive", false))
 	var is_new := bool(initial_state.get("__new", false))
 	if mode == "test":
 		career = _default_career()
@@ -2213,6 +2529,136 @@ func get_career_offers() -> Array:
 	for i in range(6):
 		out.append(_make_job(base * 977 + i * 173 + 31))
 	return out
+
+
+func _preset_job(def: Dictionary) -> Dictionary:
+	var job := def.duplicate(true)
+	if station_data.is_empty():
+		return job
+	var n := station_data.size()
+	var oi := clampi(int(job.get("origin", 0)), 0, n - 1)
+	var di := clampi(int(job.get("dest", (oi + 1) % n)), 0, n - 1)
+	if di == oi:
+		di = (oi + 1) % n
+	job["origin"] = oi
+	job["dest"] = di
+	var d0 := float(station_data[oi].get("dist", 0.0))
+	var d1 := float(station_data[di].get("dist", 0.0))
+	var dist := route.wrap_dist(d1 - d0) if route != null else 0.0
+	if dist < 100.0 and route != null:
+		dist += route.total
+	job["distance"] = dist
+	var speed := float(job.get("limit", 80.0)) / 3.6
+	job["time_limit"] = maxf(float(job.get("time_limit", 1800.0)),
+			dist / maxf(speed, 10.0) * 1.35 + 180.0)
+	job["reward"] = int(float(job.get("reward", 5000.0)) + dist * 0.04)
+	job["owned"] = _is_vehicle_owned(String(job.get("kind", "container")))
+	job["siding"] = false
+	job["seed"] = 0
+	return job
+
+
+func get_preset_missions() -> Array:
+	var out: Array = []
+	for def: Dictionary in PRESET_MISSIONS:
+		out.append(_preset_job(def))
+	return out
+
+
+func start_preset(index: int) -> void:
+	var presets := get_preset_missions()
+	if index < 0 or index >= presets.size() or train == null:
+		return
+	free_drive = false
+	_free_resume_job = {}
+	current_job = presets[index].duplicate(true)
+	if mode == "career":
+		career["current_job"] = current_job
+		career["job_finished"] = false
+	_ensure_career_panel()
+	if career_panel != null:
+		career_panel.visible = false
+	_rebuild_consist(String(current_job.get("kind", "container")), bool(current_job.get("loaded", true)))
+	if mission != null:
+		mission.single_job = true
+		mission.begin_job(current_job, int(career.get("money", 0)), int(career.get("completed", 0)))
+		mission.money = int(career.get("money", 0))
+		mission.completed = int(career.get("completed", 0))
+	var oi := clampi(int(current_job.get("origin", 0)), 0, station_data.size() - 1)
+	train.distance = float(station_data[oi]["stop"])
+	train.speed = 0.0
+	train.brake_cylinder = 4.5
+	train.set_gear(Train.GEAR_P3)
+	train.doors_open = false
+	train.door_open_side = 0
+	train.place()
+	if startup != null:
+		startup.prepare_for_service()
+	if hud != null:
+		hud.task_panel.visible = true
+		hud.set_progress(0.0, false)
+		hud.toast("已开始预设任务：%s" %String(current_job.get("title", current_job.get("number", ""))), 3.2)
+	_close_career_panel()
+	save_now(true)
+
+
+func start_free_drive() -> void:
+	if train == null:
+		return
+	if not current_job.is_empty() and not free_drive:
+		_free_resume_job = current_job.duplicate(true)
+	free_drive = true
+	if mission != null:
+		mission.tasks = []
+		mission.task = {}
+		mission.index = -1
+		mission.phase = MissionSystem.Phase.DONE
+		mission.progress = 0.0
+		mission.single_job = true
+	if hud != null:
+		hud.task_panel.visible = false
+		hud.set_progress(0.0, false)
+		hud.toast("自由驾驶：可在任务中心选择任意车站前往", 3.0)
+	if career_panel != null:
+		career_panel.refresh()
+	save_now(true)
+
+
+func free_drive_goto(index: int) -> void:
+	if train == null or index < 0 or index >= station_data.size():
+		return
+	free_drive = true
+	autopilot = false
+	train.distance = float(station_data[index]["stop"])
+	train.speed = 0.0
+	train.brake_cylinder = 4.5
+	train.handbrake = true
+	train.doors_open = false
+	train.door_open_side = 0
+	train.set_gear(Train.GEAR_P3)
+	train.place()
+	if startup != null:
+		startup.prepare_for_service()
+	if rig != null:
+		rig.set_mode(CameraRig.Mode.CHASE)
+	if hud != null:
+		hud.toast("已到达 %s，停放制动已施加" %String(station_data[index]["name"]), 2.6)
+
+
+func resume_current_job() -> void:
+	var job := _free_resume_job if not _free_resume_job.is_empty() else current_job
+	if job.is_empty():
+		return
+	free_drive = false
+	_free_resume_job = {}
+	if mode == "career":
+		accept_job(job)
+	else:
+		var presets := get_preset_missions()
+		for i in range(presets.size()):
+			if String(presets[i].get("id", "")) == String(job.get("id", "")):
+				start_preset(i)
+				return
 
 
 func accept_job(job: Dictionary) -> void:
@@ -2648,6 +3094,8 @@ func _service_name_for(kind: String) -> String:
 	match kind:
 		"hopper":
 			return "X8014 电力空车货列"
+		"passenger":
+			return "K8012 电力旅客列车"
 		_:
 			return "X8012 电力集装箱货列"
 
@@ -2841,6 +3289,10 @@ func _make_consist(kind: String, loaded: bool) -> Array:
 				engine_id, skin_id, transmission_id, part_ids)
 	var consist: Array = []
 	consist.append(Vehicles.freight_loco(engine_id, skin_id, transmission_id, part_ids))
+	if kind == "passenger":
+		for i in range(6):
+			consist.append(Vehicles.passenger_coach())
+		return consist
 	if kind == "hopper":
 		for i in range(8):
 			consist.append(Vehicles.hopper_wagon(false))
@@ -2881,7 +3333,7 @@ func _setup_mission() -> void:
 	add_child(mission)
 	mission.message.connect(_on_mission_message)
 	mission.task_started.connect(_on_task_started)
-	if mode == "career" and not current_job.is_empty():
+	if mode == "career" and not current_job.is_empty() and not free_drive:
 		tasks_cache = [current_job]
 		mission.single_job = true
 	elif mode == "open":
@@ -2889,6 +3341,13 @@ func _setup_mission() -> void:
 	else:
 		tasks_cache = _default_tasks()
 	mission.setup(route, train, station_data, tasks_cache)
+	if free_drive:
+		mission.tasks = []
+		mission.task = {}
+		mission.index = -1
+		mission.phase = MissionSystem.Phase.DONE
+		if hud != null:
+			hud.task_panel.visible = false
 	if mode == "open":
 		mission.money = int(career.get("money", 0))
 		mission.completed = int(career.get("completed", 0))
@@ -2926,7 +3385,8 @@ func _on_mission_message(text: String) -> void:
 func _on_task_started(index: int, task: Dictionary) -> void:
 	_rebuild_consist(String(task ["kind"]), bool(task ["loaded"]))
 	var cargo := String(task ["cargo"])
-	var suffix := "动车组" if String(task ["kind"]) == "emu" else "%s货物列车" %cargo
+	var kind := String(task ["kind"])
+	var suffix := "动车组" if kind == "emu" else ("旅客列车" if kind == "passenger" else "%s货物列车" %cargo)
 	train.service_name = "%s 次 %s" %[String(task ["number"]), suffix]
 	if hud != null:
 		hud.toast("本务：%s" %train.service_name, 3.2)
@@ -3016,6 +3476,7 @@ func _setup_camera() -> void:
 	rig.setup(train, route)
 	rig.set_terrain(terrain)
 	rig.stations = station_data
+	rig.hall_gates = hall_gates
 	rig.set_mode(CameraRig.Mode.CHASE)
 
 func _setup_hud() -> void:
@@ -3713,6 +4174,7 @@ func get_save_data() -> Dictionary:
 	var d := {
 		"version": SaveManager.VERSION,
 		"mode": mode,
+		"free_drive": free_drive,
 		"career": career,
 		"world": {"time_of_day": time_of_day, "route_length": route.total if route != null else 0.0},
 		"train": {},
@@ -3771,11 +4233,12 @@ func apply_save_data(d: Dictionary) -> void:
 			startup.restore(s)
 	if d.has("mode"):
 		mode = String(d ["mode"])
+	free_drive = bool(d.get("free_drive", free_drive))
 	if d.has("career"):
 		career = d ["career"].duplicate(true)
 		current_job = career.get("current_job", current_job).duplicate(true)
 	var m: Dictionary = d.get("mission", {})
-	if mission != null and not m.is_empty():
+	if mission != null and not m.is_empty() and not free_drive:
 		mission.restore_state(m)
 	if mission != null and mode == "career":
 		mission.money = int(career.get("money", mission.money))
@@ -3842,8 +4305,126 @@ func _update_autosave(delta: float) -> void:
 		save_now(true)
 
 
+func _hall_spot_near() -> Dictionary:
+	if rig == null or train == null:
+		return {}
+	if not rig._on_foot and rig.mode != CameraRig.Mode.WALK:
+		return {}
+	if rig._train_walk or rig._cab_walk:
+		return {}
+	var best: Dictionary = {}
+	var best_d := 2.45
+	var p: Vector3 = rig._walk_pos
+	for spot: Dictionary in hall_spots:
+		var sp: Vector3 = spot.get("pos", Vector3.ZERO)
+		var d := Vector2(p.x - sp.x, p.z - sp.z).length()
+		if d < best_d and absf(p.y - sp.y) < 2.4:
+			best_d = d
+			best = spot
+	return best
+
+
+func _open_station_gates(station_index: int, seconds := 8.0) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	for gi in range(hall_gates.size()):
+		var g: Dictionary = hall_gates[gi]
+		if int(g.get("station", -1)) != station_index:
+			continue
+		g["open_until"] = now + seconds
+		var gn := g.get("node") as Node3D
+		if gn != null:
+			gn.set_meta("gate_open", true)
+
+
+func _handle_hall_interact() -> bool:
+	var spot := _hall_spot_near()
+	if spot.is_empty():
+		return false
+	var now := Time.get_ticks_msec() / 1000.0
+	match String(spot.get("type", "")):
+		"ticket":
+			hall_ticket_until = now + 600.0
+			if hud != null:
+				hud.toast("已取票：10 分钟内可在检票闸机按 E 验票进站", 3.0)
+			return true
+		"gate":
+			if now > hall_ticket_until:
+				if hud != null:
+					hud.toast("请先在自动售票机按 E 取票", 2.4)
+				return true
+			_open_station_gates(int(spot.get("station", -1)), 9.0)
+			if hud != null:
+				hud.toast("验票通过，闸机已打开", 2.0)
+			return true
+		"shop":
+			var price := int(spot.get("price", 15))
+			var money := int(career.get("money", 0))
+			if mode != "open" and money < price:
+				if hud != null:
+					hud.toast("资金不足，热饮需要 ¥%d" %price, 2.2)
+				return true
+			if mode != "open":
+				career["money"] = money - price
+				if mission != null:
+					mission.money = int(career["money"])
+			coffee_until = now + 180.0
+			if hud != null:
+				hud.toast("购买热咖啡：3 分钟内步行速度 +20%", 2.8)
+			return true
+	if hud != null:
+		hud.toast("这里没有可操作的设备", 1.5)
+	return true
+
+
+func _update_hall_interactables(delta: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	for gi in range(hall_gates.size()):
+		var g: Dictionary = hall_gates[gi]
+		var node := g.get("node") as Node3D
+		if node == null or not is_instance_valid(node):
+			continue
+		var open_now := now < float(g.get("open_until", 0.0))
+		node.set_meta("gate_open", open_now)
+		var target := 1.0 if open_now else 0.0
+		g["anim"] = move_toward(float(g.get("anim", 0.0)), target, delta * 3.2)
+		for child: Node in node.get_children():
+			if child is MeshInstance3D and String(child.name).begins_with("GateLeaf"):
+				var leaf := child as MeshInstance3D
+				var base := float(leaf.get_meta("leaf_base_z", leaf.position.z))
+				leaf.position.z = base + signf(base) * float(g["anim"]) * 0.90
+	for bi in range(hall_belts.size()):
+		var belt: Dictionary = hall_belts[bi]
+		var node := belt.get("node") as Node3D
+		if node == null or not is_instance_valid(node):
+			continue
+		var dz := float(belt.get("dir", 1.0)) * float(belt.get("speed", 1.9)) * delta
+		for step in belt.get("steps", []):
+			var sm := step as MeshInstance3D
+			if sm == null:
+				continue
+			sm.position.z += dz
+			if sm.position.z > 8.0:
+				sm.position.z -= 16.0
+			elif sm.position.z < -8.0:
+				sm.position.z += 16.0
+		if rig != null and (rig._on_foot or rig.mode == CameraRig.Mode.WALK) \
+				and not rig._train_walk and not rig._cab_walk:
+			var local := node.global_transform.affine_inverse() * rig._walk_pos
+			if absf(local.x) <= float(belt.get("half_x", 0.72)) \
+					and absf(local.z) <= float(belt.get("half_z", 8.0)) \
+					and local.y > -0.5 and local.y < 1.8:
+				rig.walk_push += node.global_transform.basis.z * float(belt.get("dir", 1.0)) * float(belt.get("carry", 1.35))
+	if rig != null:
+		rig.walk_speed_mul = 1.0
+		if now < coffee_until:
+			rig.walk_speed_mul = 1.2
+
+
 func _handle_interact() -> void:
 	if rig == null or train == null:
+		return
+	if (rig._on_foot or rig.mode == CameraRig.Mode.WALK) \
+			and not rig._train_walk and not rig._cab_walk and _handle_hall_interact():
 		return
 	if rig.mode == CameraRig.Mode.WALK:
 		if rig.try_board():
@@ -3892,6 +4473,17 @@ func _try_sit() -> void:
 func _mode_hint() -> String:
 	if rig == null:
 		return "V 回正"
+	if (rig._on_foot or rig.mode == CameraRig.Mode.WALK) \
+			and not rig._train_walk and not rig._cab_walk:
+		var spot := _hall_spot_near()
+		if not spot.is_empty():
+			match String(spot.get("type", "")):
+				"ticket":
+					return "E 取票"
+				"gate":
+					return "E 验票通过"
+				"shop":
+					return "E 购买热饮 ¥%d" %int(spot.get("price", 15))
 	match rig.mode:
 		CameraRig.Mode.WALK:
 			return "E 登车" if rig.can_board() else "WASD 行走  空格跳  Shift 跑  E 登车"
@@ -3928,6 +4520,7 @@ func _process(delta: float) -> void:
 	if interaction != null and rig != null:
 		interaction.enabled = rig.mode == CameraRig.Mode.CAB \
 				or (rig.mode == CameraRig.Mode.WALK and rig._cab_walk)
+	_update_hall_interactables(delta)
 	_update_autosave(delta)
 	if hud != null and train != null:
 		var hint := ""

@@ -72,7 +72,7 @@ func _build_shell() -> void:
 func open(p_game: Game) -> void:
 	game = p_game
 	visible = true
-	_tab = "jobs"
+	_tab = "jobs" if game != null and game.mode == "career" else "presets"
 	_message = ""
 	refresh()
 	if _content.get_child_count() > 0:
@@ -91,8 +91,12 @@ func refresh() -> void:
 	_content.add_child(tabs)
 	if game != null and game.mode == "career":
 		_add_tab(tabs, "快速任务", "jobs")
+		_add_tab(tabs, "预设任务", "presets")
+		_add_tab(tabs, "自由驾驶", "free")
 		_add_tab(tabs, "车库", "garage")
 	else:
+		_add_tab(tabs, "预设任务", "presets")
+		_add_tab(tabs, "自由驾驶", "free")
 		_add_tab(tabs, "车辆编组", "garage")
 	if _message != "":
 		var msg := Label.new()
@@ -105,10 +109,19 @@ func refresh() -> void:
 	if game.mode == "career":
 		if _tab == "jobs":
 			_add_jobs()
+		elif _tab == "presets":
+			_add_presets()
+		elif _tab == "free":
+			_add_free_drive()
 		else:
 			_add_garage()
 	else:
-		_add_open_consists()
+		if _tab == "presets":
+			_add_presets()
+		elif _tab == "free":
+			_add_free_drive()
+		else:
+			_add_open_consists()
 	_add_close_button()
 
 
@@ -118,10 +131,11 @@ func _add_header() -> void:
 	var line := Label.new()
 	if game.mode == "career":
 		var career: Dictionary = game.career
-		line.text = "资金  ¥%d     等级  Lv.%d     经验  %d     完成  %d 单     生涯收入  ¥%d" %[
+		line.text = "资金  ¥%d     等级  Lv.%d     经验  %d     完成  %d 单     生涯收入  ¥%d%s" %[
 			int(career.get("money", 0)), int(career.get("level", 1)),
 			int(career.get("xp", 0)), int(career.get("completed", 0)),
-			int(career.get("earnings", 0))
+			int(career.get("earnings", 0)),
+			"     · 自由驾驶中" if game.free_drive else ""
 		]
 		line.add_theme_color_override("font_color", Color(0.68, 0.82, 0.92))
 	elif game.mode == "test":
@@ -224,6 +238,141 @@ func _job_card(job: Dictionary, current: bool) -> Control:
 		)
 	row.add_child(b)
 	return card
+
+
+func _add_presets() -> void:
+	_content.add_child(_section("预设任务 · 固定车次、固定编组、固定停站"))
+	var presets: Array = game.get_preset_missions()
+	for i in range(presets.size()):
+		var job: Dictionary = presets[i]
+		var card := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.07, 0.10, 0.14, 0.96)
+		sb.border_color = Color(0.28, 0.40, 0.50, 0.9)
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(9)
+		sb.set_content_margin_all(10)
+		card.add_theme_stylebox_override("panel", sb)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 14)
+		card.add_child(row)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_theme_constant_override("separation", 2)
+		row.add_child(info)
+		var oi := clampi(int(job.get("origin", 0)), 0, game.station_data.size() - 1)
+		var di := clampi(int(job.get("dest", 0)), 0, game.station_data.size() - 1)
+		var top := Label.new()
+		top.text = "%s  %s  ·  %s → %s" %[
+			String(job.get("number", "JOB")), String(job.get("title", "预设任务")),
+			String(game.station_data[oi]["name"]), String(game.station_data[di]["name"])]
+		top.add_theme_font_size_override("font_size", 17)
+		top.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0))
+		info.add_child(top)
+		var detail := Label.new()
+		var amount := "%d 人" %int(job.get("weight", 0)) if String(job.get("unit", "t")) == "人" \
+				else "%.0f t" %float(job.get("weight", 0))
+		detail.text = "%s %s  ·  %.1f km  ·  限速 %.0f km/h  ·  时限 %s" %[
+			String(job.get("cargo", "货物")), amount,
+			float(job.get("distance", 0.0)) / 1000.0, float(job.get("limit", 0.0)),
+			_time_text(float(job.get("time_limit", 0.0)))]
+		detail.add_theme_font_size_override("font_size", 13)
+		detail.add_theme_color_override("font_color", Color(0.62, 0.72, 0.82))
+		info.add_child(detail)
+		var kind_label := Label.new()
+		kind_label.text = "固定编组 · %s" %("旅客列车" if String(job.get("kind", "")) == "passenger" else "货物列车")
+		kind_label.add_theme_font_size_override("font_size", 12)
+		kind_label.add_theme_color_override("font_color", Color(0.50, 0.64, 0.72))
+		info.add_child(kind_label)
+		var pay := Label.new()
+		pay.text = "¥%d" %int(job.get("reward", 0))
+		pay.add_theme_font_size_override("font_size", 25)
+		pay.add_theme_color_override("font_color", Color(1.0, 0.78, 0.4))
+		row.add_child(pay)
+		var b := Button.new()
+		b.text = "开始"
+		b.custom_minimum_size = Vector2(94, 46)
+		_style_button(b, false)
+		var idx := i
+		b.pressed.connect(func() -> void: game.start_preset(idx))
+		row.add_child(b)
+		_content.add_child(card)
+
+
+func _add_free_drive() -> void:
+	_content.add_child(_section("自由驾驶 · 任意车站出发，不受任务时限"))
+	var status := Label.new()
+	if game.free_drive:
+		status.text = "当前：自由驾驶。列车可以在任意车站停靠、开门和继续运行。"
+		status.add_theme_color_override("font_color", Color(0.55, 0.95, 0.68))
+	else:
+		status.text = "进入自由驾驶会暂时收起当前任务；之后可从本页继续当前任务。"
+		status.add_theme_color_override("font_color", Color(0.72, 0.80, 0.88))
+	status.add_theme_font_size_override("font_size", 14)
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_content.add_child(status)
+	var action_row := HBoxContainer.new()
+	action_row.add_theme_constant_override("separation", 10)
+	_content.add_child(action_row)
+	if not game.free_drive:
+		var enter := Button.new()
+		enter.text = "进入自由驾驶"
+		enter.custom_minimum_size = Vector2(190, 42)
+		_style_button(enter, true)
+		enter.pressed.connect(func() -> void: game.start_free_drive())
+		action_row.add_child(enter)
+	else:
+		var resume := Button.new()
+		resume.text = "继续当前任务" if not game.current_job.is_empty() else "返回任务中心"
+		resume.custom_minimum_size = Vector2(190, 42)
+		_style_button(resume, false)
+		resume.pressed.connect(func() -> void: game.resume_current_job())
+		action_row.add_child(resume)
+	var refresh_btn := Button.new()
+	refresh_btn.text = "刷新车站"
+	refresh_btn.custom_minimum_size = Vector2(130, 42)
+	_style_button(refresh_btn, false)
+	refresh_btn.pressed.connect(refresh)
+	action_row.add_child(refresh_btn)
+
+	_content.add_child(_section("车站 · 点击后立即移动到该站停车标"))
+	for i in range(game.station_data.size()):
+		var st: Dictionary = game.station_data[i]
+		var card := PanelContainer.new()
+		var sb := StyleBoxFlat.new()
+		sb.bg_color = Color(0.07, 0.10, 0.14, 0.96)
+		sb.border_color = Color(0.26, 0.36, 0.46, 0.9)
+		sb.set_border_width_all(1)
+		sb.set_corner_radius_all(8)
+		sb.set_content_margin_all(8)
+		card.add_theme_stylebox_override("panel", sb)
+		var row := HBoxContainer.new()
+		row.add_theme_constant_override("separation", 10)
+		card.add_child(row)
+		var info := VBoxContainer.new()
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(info)
+		var nm := Label.new()
+		nm.text = "%s%s" %[String(st.get("name", "车站")),
+			"   · 支线" if bool(st.get("branch", false)) else ""]
+		nm.add_theme_font_size_override("font_size", 17)
+		nm.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0))
+		info.add_child(nm)
+		var det := Label.new()
+		det.text = "站台 %.0f m  ·  停车标 %.1f km%s" %[
+			float(st.get("platform_len", 0.0)), float(st.get("stop", 0.0)) / 1000.0,
+			"  ·  货运站" if bool(st.get("freight", false)) else ""]
+		det.add_theme_font_size_override("font_size", 12)
+		det.add_theme_color_override("font_color", Color(0.60, 0.70, 0.80))
+		info.add_child(det)
+		var b := Button.new()
+		b.text = "前往"
+		b.custom_minimum_size = Vector2(90, 40)
+		_style_button(b, false)
+		var idx := i
+		b.pressed.connect(func() -> void: game.free_drive_goto(idx))
+		row.add_child(b)
+		_content.add_child(card)
 
 
 func _add_garage() -> void:

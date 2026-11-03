@@ -28,6 +28,9 @@ var _last_walk_vehicle := -2
 var _last_walk_valid := false
 
 var stations: Array = []
+var hall_gates: Array = []
+var walk_push := Vector3.ZERO
+var walk_speed_mul := 1.0
 
 func _far_distance(cab: bool) -> float:
 	if Config.quality <= Config.Quality.LOW:
@@ -793,8 +796,26 @@ func _platform_at(p: Vector3) -> Dictionary:
 
 func _resolve_world_collisions(prev_xz: Vector2) -> void:
 	_resolve_station_hall(prev_xz)
+	_resolve_hall_gates(prev_xz)
 	_resolve_platform_face(prev_xz)
 	_resolve_train_collision()
+
+
+func _resolve_hall_gates(prev_xz: Vector2) -> void:
+	if hall_gates.is_empty():
+		return
+	for g: Dictionary in hall_gates:
+		var node := g.get("node") as Node3D
+		if node == null or not is_instance_valid(node):
+			continue
+		if bool(node.get_meta("gate_open", false)):
+			continue
+		var local := node.global_transform.affine_inverse() * _walk_pos
+		if absf(local.x) <= 0.32 and absf(local.z) <= 1.18 \
+				and local.y > -0.25 and local.y < 1.85:
+			_walk_pos.x = prev_xz.x
+			_walk_pos.z = prev_xz.y
+			return
 
 
 func _signed_dist_delta(d: float, base: float) -> float:
@@ -1108,13 +1129,14 @@ func _update_walk(delta: float) -> void:
 		move -= right
 	if Input.is_action_pressed("lights_toggle"):
 		move += right
-	var speed := 8.6 if Input.is_key_pressed(KEY_SHIFT) else 4.2
+	var speed := (8.6 if Input.is_key_pressed(KEY_SHIFT) else 4.2) * walk_speed_mul
 	var target := Vector3.ZERO
 	if move.length_squared() > 0.0001:
 		target = move.normalized() * speed
 	_walk_vel = _walk_vel.lerp(target, clampf(delta * 11.0, 0.0, 1.0))
 	var prev_xz := Vector2(_walk_pos.x, _walk_pos.z)
-	_walk_pos += _walk_vel * delta
+	_walk_pos += (_walk_vel + walk_push) * delta
+	walk_push = Vector3.ZERO
 	if _train_walk:
 		_train_walk_step()
 	elif _cab_walk:

@@ -195,7 +195,7 @@ func _build() -> void:
 	route_name.add_theme_color_override("font_color", TEXT_MAIN)
 	route_head.add_child(route_name)
 	var route_meta := Label.new()
-	route_meta.text = "95.93 km    ·    18 座车站    ·    4 座高架桥    ·    昼夜与天气"
+	route_meta.text = "28.52 km    ·    7 座车站    ·    3 座高架桥    ·    东环支线"
 	route_meta.add_theme_font_size_override("font_size", 11)
 	route_meta.add_theme_color_override("font_color", TEXT_MUTED)
 	route_box.add_child(route_meta)
@@ -335,7 +335,7 @@ func _build_hero() -> void:
 	var stats_row := HBoxContainer.new()
 	stats_row.add_theme_constant_override("separation", 10)
 	_title_block.add_child(stats_row)
-	for spec: Array in [["95.93", "km 环线"], ["18", "座车站"], ["4", "座高架桥"]]:
+	for spec: Array in [["28.52", "km 环线"], ["7", "座车站"], ["1", "条支线"]]:
 		var card := PanelContainer.new()
 		card.custom_minimum_size = Vector2(166, 62)
 		card.add_theme_stylebox_override("panel",

@@ -110,6 +110,22 @@ const STATIONS := [
 		"settlement": "town", "settlement_side": -1.0, "population": 9500,
 		"urban_radius": 340.0, "urban_offset": 260.0,
 	},
+	# East-loop branch. The five main-line stations above keep their original
+	# positions; these two small stops sit on the long curve between Qingshi
+	# and Shanchuan, giving free-drive and preset missions a genuine branch
+	# service without moving the main line.
+	{
+		"id": "yunxi", "name": "云溪站", "name_en": "Yunxi",
+		"frac": 0.8800, "platform_len": 240.0, "freight": false,
+		"settlement": "town", "settlement_side": 1.0, "population": 6200,
+		"urban_radius": 230.0, "urban_offset": 235.0, "branch": true,
+	},
+	{
+		"id": "shimen", "name": "石门站", "name_en": "Shimen",
+		"frac": 0.9400, "platform_len": 240.0, "freight": false,
+		"settlement": "town", "settlement_side": -1.0, "population": 4300,
+		"urban_radius": 205.0, "urban_offset": 225.0, "branch": true,
+	},
 ]
 
 
