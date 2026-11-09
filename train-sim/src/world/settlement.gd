@@ -1,8 +1,6 @@
 extends Node3D
 class_name Settlement
 
-const StreetLifeScript = preload("res://src/world/street_life.gd")
-
 
 var night_windows: Array [GeometryInstance3D] = []
 var night_lights: Array [OmniLight3D] = []
@@ -10,7 +8,6 @@ var _window_mat: StandardMaterial3D
 var _lamp_mat: StandardMaterial3D
 var _trim_mat: StandardMaterial3D
 var _curb_mat: StandardMaterial3D
-var street_life: Node3D
 
 
 static func build(parent: Node3D, route: Route, site: Dictionary, yield_frames := false) -> Settlement:
@@ -53,8 +50,6 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 	var shop_mat := Gfx.glass(Color(0.04, 0.06, 0.08), 0.12, 0.72)
 	var mark_white := Gfx.paint(Color(0.62, 0.63, 0.58), 0.8, 0.0, 0.1)
 	var mark_yellow := Gfx.paint(Color(0.72, 0.55, 0.15), 0.75, 0.0, 0.1)
-	var car_a := Gfx.paint(Color(0.55, 0.12, 0.1), 0.3, 0.45, 0.8)
-	var car_b := Gfx.paint(Color(0.22, 0.32, 0.44), 0.3, 0.45, 0.8)
 	_lamp_mat = Gfx.emissive(Color(1.0, 0.82, 0.5), 1.2, Color(0.18, 0.15, 0.1))
 
 	var walls_items: Array = []
@@ -69,8 +64,6 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 	var trim_items: Array = []
 	var mark_items: Array = []
 	var shop_items: Array = []
-	var car_items: Array = []
-	var car_items_b: Array = []
 
 	var low := Config.quality <= Config.Quality.LOW
 	var block := (72.0 if low else 54.0) if city else 34.0
@@ -281,20 +274,6 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 		if yield_frames:
 			await get_tree().process_frame
 
-	if city:
-		for i in range(9):
-			var along_z := i % 2 == 0
-			var cxp := center.x + (2.8 if i % 4 < 2 else -2.8) if along_z else center.x + rng.randf_range(-radius * 0.62, radius * 0.62)
-			var czp := center.z + rng.randf_range(-radius * 0.62, radius * 0.62) if along_z else center.z + (2.8 if i % 4 < 2 else -2.8)
-			var target := car_items if i % 3 == 0 else car_items_b
-			var body := Vector3(1.9, 0.62, 4.1) if along_z else Vector3(4.1, 0.62, 1.9)
-			var cab := Vector3(1.65, 0.52, 2.0) if along_z else Vector3(2.0, 0.52, 1.65)
-			target.append([Forge.box(body), Transform3D(Basis(), Vector3(cxp, pad_h + 0.43, czp))])
-			target.append([Forge.box(cab), Transform3D(Basis(), Vector3(cxp, pad_h + 0.98, czp))])
-			detail_items.append([Forge.box(Vector3(0.26, 0.5, 0.26)), Transform3D(Basis(), Vector3(cxp - 0.72, pad_h + 0.22, czp - 1.25 if along_z else czp + 0.62))])
-			detail_items.append([Forge.box(Vector3(0.26, 0.5, 0.26)), Transform3D(Basis(), Vector3(cxp + 0.72, pad_h + 0.22, czp - 1.25 if along_z else czp + 0.62))])
-			detail_items.append([Forge.box(Vector3(0.26, 0.5, 0.26)), Transform3D(Basis(), Vector3(cxp - 0.72, pad_h + 0.22, czp + 1.25 if along_z else czp - 0.62))])
-			detail_items.append([Forge.box(Vector3(0.26, 0.5, 0.26)), Transform3D(Basis(), Vector3(cxp + 0.72, pad_h + 0.22, czp + 1.25 if along_z else czp - 0.62))])
 	for gx in range(-grid, grid + 1):
 		for gz in range(-grid, grid + 1):
 			if absf(fmod(float(gx), 3.0)) > 0.1 or absf(fmod(float(gz), 3.0)) > 0.1:
@@ -338,10 +317,7 @@ func _build(route: Route, site: Dictionary, yield_frames := false) -> void:
 	_add_merged(trim_items, _trim_mat, "CityTrim")
 	_add_merged(shop_items, shop_mat, "CityStorefronts")
 	_add_merged(mark_items, mark_white, "CityMarkings")
-	_add_merged(car_items, car_a, "CityCarsA")
-	_add_merged(car_items_b, car_b, "CityCarsB")
 	_add_merged(lamp_items, Gfx.metal(Color(0.28, 0.29, 0.3), 0.5, 0.6), "CityLamps")
-	street_life = StreetLifeScript.attach(self, route, site, block, road_w)
 	var wmi := _add_merged(window_items, _window_mat, "CityWindows")
 	if wmi != null:
 		wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

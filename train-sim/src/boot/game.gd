@@ -118,7 +118,6 @@ var _ai_horn_cooldown := 0.0
 var station_data: Array = []
 var settlement_sites: Array = []
 var settlements: Array = []
-var street_lives: Array = []
 var hall_spots: Array = []
 var hall_gates: Array = []
 var hall_belts: Array = []
@@ -1323,8 +1322,6 @@ func _build_settlement(station: Dictionary, yield_frames := false) -> void:
 			else:
 				s = Settlement.build(self, route, site)
 			settlements.append(s)
-			if s.street_life != null:
-				street_lives.append(s.street_life)
 
 func _build_stop_mark(dist: float, side: float, station_name := "") -> void:
 	var group := Node3D.new()
@@ -1449,6 +1446,40 @@ func _build_freight_yard(dist: float, side: float, station_name: String, platfor
 	return hoist
 
 
+func _platform_palette(station_index: int, freight: bool, settlement: String) -> Dictionary:
+	if freight:
+		return {
+			"accent": Color(0.66, 0.48, 0.14),
+			"surface": Color(0.55, 0.55, 0.52),
+			"glow": Color(1.0, 0.74, 0.28),
+		}
+	var branch := station_index >= 0 and station_index < Config.STATIONS.size() \
+			and bool(Config.STATIONS[station_index].get("branch", false))
+	if branch:
+		return {
+			"accent": Color(0.10, 0.43, 0.42),
+			"surface": Color(0.61, 0.64, 0.62),
+			"glow": Color(0.47, 0.92, 0.84),
+		}
+	if settlement == "city":
+		return {
+			"accent": Color(0.15, 0.31, 0.50),
+			"surface": Color(0.64, 0.65, 0.65),
+			"glow": Color(0.58, 0.80, 1.0),
+		}
+	if settlement == "town":
+		return {
+			"accent": Color(0.47, 0.22, 0.15),
+			"surface": Color(0.65, 0.62, 0.57),
+			"glow": Color(1.0, 0.74, 0.50),
+		}
+	return {
+		"accent": Color(0.23, 0.35, 0.28),
+		"surface": Color(0.61, 0.61, 0.57),
+		"glow": Color(0.66, 0.92, 0.68),
+	}
+
+
 func _build_station(dist: float, station_name: String, side: float, freight := false, platform_len := 220.0,
 		settlement := "halt", station_index := -1, yield_frames := false) -> void:
 	var group := Node3D.new()
@@ -1462,6 +1493,12 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	var half_w := 2.9
 	var top := 1.02 if freight else 1.1
 	var edge_lat := lat_c - half_w
+	var palette := _platform_palette(station_index, freight, settlement)
+	var accent_col: Color = palette["accent"]
+	var surface_col: Color = palette["surface"]
+	var glow_col: Color = palette["glow"]
+	var accent_mat := Gfx.paint(accent_col, 0.42, 0.30, 0.42)
+	var accent_glow := Gfx.emissive(glow_col, 1.0, accent_col.darkened(0.55))
 	var d := dist - platform_len * 0.5
 
 
@@ -1478,7 +1515,7 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	var plat := MeshInstance3D.new()
 	plat.name = "Platform"
 	plat.mesh = Forge.loft(prof, frames, true, true)
-	plat.material_override = Gfx.noise_surface(Color(0.635, 0.625, 0.6), 0.9, 0.22, 0.18)
+	plat.material_override = Gfx.noise_surface(surface_col, 0.9, 0.22, 0.18)
 	group.add_child(plat)
 
 	var foundation_items := []
@@ -1503,6 +1540,9 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	var line := []
 	var tact := []
 	var bumps := []
+	var accent_strip := []
+	var edge_lights := []
+	var platform_joints := []
 	d = dist - platform_len * 0.5 + 1.0
 	var bi := 0
 	while d <= dist + platform_len * 0.5 - 1.0:
@@ -1511,6 +1551,14 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 		var up := xf.origin + Vector3.UP * top
 		bnd.append([Forge.box(Vector3(0.3, 0.03, 1.06)), Transform3D(b, up + b.x *(side *(edge_lat + 0.15)))])
 		line.append([Forge.box(Vector3(0.12, 0.03, 1.06)), Transform3D(b, up + b.x *(side *(edge_lat + 0.85)))])
+		accent_strip.append([Forge.box(Vector3(0.14, 0.018, 1.04)),
+				Transform3D(b, up + b.x *(side *(lat_c + 2.52)) + Vector3.UP * 0.01)])
+		if bi % 6 == 0:
+			edge_lights.append([Forge.box(Vector3(0.16, 0.032, 0.56)),
+					Transform3D(b, up + b.x *(side *(edge_lat + 0.17)) + Vector3.UP * 0.012)])
+		if bi % 12 == 0:
+			platform_joints.append([Forge.box(Vector3(half_w * 1.82, 0.012, 0.09)),
+					Transform3D(b, up + Vector3.UP * 0.009)])
 		if not freight:
 			tact.append([Forge.box(Vector3(0.36, 0.032, 1.06)), Transform3D(b, up + b.x *(side *(edge_lat + 1.42)))])
 			if bi %2 == 0:
@@ -1520,6 +1568,9 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 		d += 1.0
 	_add_merged(group, "PlatformEdgeStone", bnd, Gfx.paint(Color(0.3, 0.31, 0.32), 0.75, 0.05, 0.2))
 	_add_merged(group, "PlatformYellowLine", line, Gfx.paint(Color(0.93, 0.86, 0.26), 0.6, 0.05, 0.3))
+	_add_merged(group, "PlatformAccentStrip", accent_strip, accent_mat)
+	_add_merged(group, "PlatformEdgeLights", edge_lights, accent_glow)
+	_add_merged(group, "PlatformJoints", platform_joints, Gfx.metal(Color(0.42, 0.43, 0.42), 0.7, 0.15))
 	if not tact.is_empty():
 		_add_merged(group, "TactilePaving", tact, Gfx.paint(Color(0.86, 0.74, 0.22), 0.7, 0.05, 0.2))
 		_add_merged(group, "TactileBumps", bumps, Gfx.paint(Color(0.8, 0.68, 0.2), 0.7, 0.05, 0.2))
@@ -1530,7 +1581,7 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	d = dist - platform_len * 0.5 + 12.0
 	while d <= dist + platform_len * 0.5 - 12.0:
 		var xf := route.frame_at(d)
-		var lp := xf.origin + xf.basis.x *(side *(lat_c + 2.2)) + Vector3.UP * top
+		var lp := xf.origin + xf.basis.x *(side *(lat_c + 2.75)) + Vector3.UP * top
 		lamp_items.append([Forge.cylinder(0.085, 7.4, 8, 0.0, true, true), Transform3D(Basis(), lp)])
 		lamp_items.append([Forge.cylinder(0.2, 0.3, 8, 0.0, true, true), Transform3D(Basis(), lp + Vector3.UP * 0.15)])
 		for arm: float in([-1.0, 1.0] if not freight else [-1.0]):
@@ -1558,9 +1609,77 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 		group.add_child(pl)
 		station_lights.append(pl)
 
+	# Platform identity: small number plates on the rear fence at both ends,
+	# plus two hanging name boards under the canopy. None of these are placed
+	# across the walking route, so they cannot create a barrier.
+	var platform_text := "%s  ·  %s" %[
+		station_name, "货场 1 站台" if freight else "1 站台"]
+	for e: float in [-0.44, 0.44]:
+		var nf := route.frame_at(dist + e * platform_len)
+		var nb := nf.basis.orthonormalized() * Basis(Vector3.UP, -side * PI * 0.5)
+		var plate := MeshInstance3D.new()
+		plate.name = "PlatformNumber_%d_%s" %[station_index, "A" if e < 0.0 else "B"]
+		plate.mesh = Forge.box(Vector3(0.92, 0.58, 0.055))
+		plate.material_override = accent_mat
+		plate.transform = Transform3D(nb,
+				nf.origin + nf.basis.x * (side * (lat_c + 2.42)) + Vector3.UP * (top + 1.35))
+		group.add_child(plate)
+		var plate_label := Label3D.new()
+		plate_label.text = "1\n站台"
+		plate_label.font_size = 54
+		plate_label.pixel_size = 0.0026
+		plate_label.modulate = Color(0.96, 0.97, 0.95)
+		plate_label.outline_size = 5
+		plate_label.outline_modulate = Color(0.04, 0.06, 0.08)
+		plate_label.transform = Transform3D(nb, plate.transform.origin + nb.z * 0.038)
+		group.add_child(plate_label)
+		var plate_label2 := plate_label.duplicate() as Label3D
+		plate_label2.transform = Transform3D(nb * Basis(Vector3.UP, PI),
+				plate.transform.origin - nb.z * 0.038)
+		group.add_child(plate_label2)
+
+	if not freight:
+		for e: float in [-0.30, 0.30]:
+			var hf := route.frame_at(dist + e * 150.0)
+			var hb := hf.basis.orthonormalized() * Basis(Vector3.UP, -side * PI * 0.5)
+			var hboard := MeshInstance3D.new()
+			hboard.name = "PlatformNameBoard_%d_%s" %[station_index, "A" if e < 0.0 else "B"]
+			hboard.mesh = Forge.box(Vector3(3.3, 0.54, 0.08))
+			hboard.material_override = Gfx.paint(Color(0.09, 0.13, 0.18), 0.45, 0.35, 0.45)
+			hboard.transform = Transform3D(hb,
+					hf.origin + hf.basis.x * (side * (lat_c + 0.75)) + Vector3.UP * (top + 3.62))
+			group.add_child(hboard)
+			var hlabel := Label3D.new()
+			hlabel.text = platform_text
+			hlabel.font_size = 74
+			hlabel.pixel_size = 0.0032
+			hlabel.modulate = Color(0.98, 0.96, 0.90)
+			hlabel.outline_size = 7
+			hlabel.outline_modulate = Color(0.04, 0.06, 0.09)
+			hlabel.transform = Transform3D(hb,
+					hboard.transform.origin + hb.z * 0.048)
+			group.add_child(hlabel)
+			var hlabel2 := hlabel.duplicate() as Label3D
+			hlabel2.transform = Transform3D(hb * Basis(Vector3.UP, PI),
+					hboard.transform.origin - hb.z * 0.048)
+			group.add_child(hlabel2)
+			for hz: float in [-1.25, 1.25]:
+				var hanger := MeshInstance3D.new()
+				hanger.mesh = Forge.box(Vector3(0.035, 0.62, 0.035))
+				hanger.material_override = Gfx.metal(Color(0.34, 0.36, 0.38), 0.4, 0.7)
+				hanger.transform = Transform3D(hb,
+						hboard.transform.origin + hb.x * hz + Vector3.UP * 0.58)
+				group.add_child(hanger)
 
 	if not freight:
 		var can_len := 150.0
+		if station_index >= 0 and station_index < Config.STATIONS.size() \
+				and bool(Config.STATIONS[station_index].get("branch", false)):
+			can_len = 120.0
+		elif settlement == "city":
+			can_len = 170.0
+		elif settlement == "town":
+			can_len = 135.0
 		var can_lat := lat_c + 0.9
 		var roof_frames: Array [Transform3D] = []
 		var col_items := []
@@ -1608,7 +1727,7 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 				fasci.append([Forge.box(Vector3(0.1, 0.46, 3.0)),
 						Transform3D(rf.basis, rf.origin + rf.basis.x *(side * 2.95) + Vector3.UP *(-0.02))])
 			fi += 1
-		_add_merged(group, "CanopyFascia", fasci, Gfx.paint(Color(0.13, 0.21, 0.36), 0.55, 0.25, 0.35))
+		_add_merged(group, "CanopyFascia", fasci, accent_mat)
 		_add_merged(group, "CanopyTruss", rib_items, Gfx.metal(Color(0.5, 0.52, 0.55), 0.5, 0.55))
 		_add_merged(group, "CanopyColumns", col_items, Gfx.metal(Color(0.44, 0.46, 0.49), 0.45, 0.7))
 		_add_merged(group, "CanopyLights", light_items,
@@ -1637,14 +1756,46 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 			d2 += 18.0
 		_add_merged(group, "PlatformSeats", seat_items, Gfx.paint(Color(0.36, 0.4, 0.46), 0.6, 0.1, 0.3))
 		_add_merged(group, "PlatformBins", seat_legs, Gfx.metal(Color(0.34, 0.36, 0.38), 0.5, 0.6))
+
+		# Vending machines and wind screens break up the long rear edge.
+		# They are fixed geometry, not animated actors.
+		var vend_body := []
+		var vend_glow := []
+		for vz: float in [-55.0, 55.0]:
+			var vf := route.frame_at(dist + vz)
+			var vb := vf.basis.orthonormalized()
+			var vbase := vf.origin + vb.x * (side * (lat_c + 1.90)) + Vector3.UP * top
+			vend_body.append([Forge.box(Vector3(0.72, 1.92, 0.56)),
+					Transform3D(vb, vbase + Vector3.UP * 0.96)])
+			vend_body.append([Forge.box(Vector3(0.76, 0.10, 0.60)),
+					Transform3D(vb, vbase + Vector3.UP * 1.96)])
+			vend_glow.append([Forge.box(Vector3(0.035, 1.18, 0.46)),
+					Transform3D(vb, vbase - vb.x * (side * 0.30) + Vector3.UP * 1.10)])
+		_add_merged(group, "PlatformVending", vend_body, Gfx.paint(Color(0.17, 0.20, 0.23), 0.5, 0.25, 0.35))
+		_add_merged(group, "PlatformVendingScreens", vend_glow, accent_glow)
+
+		if settlement == "city" or settlement == "town":
+			var screen_glass := Gfx.glass(Color(0.16, 0.24, 0.30), 0.05, 0.22)
+			var wind_items := []
+			for wz: float in [-platform_len * 0.29, platform_len * 0.29]:
+				var wf := route.frame_at(dist + wz)
+				var wb := wf.basis.orthonormalized()
+				var wp := wf.origin + wb.x * (side * (lat_c + 2.68)) + Vector3.UP * (top + 1.02)
+				wind_items.append([Forge.box(Vector3(0.035, 1.55, 4.4)),
+						Transform3D(wb, wp)])
+				wind_items.append([Forge.box(Vector3(0.055, 0.08, 4.5)),
+						Transform3D(wb, wp + Vector3.UP * 0.80)])
+				wind_items.append([Forge.box(Vector3(0.055, 0.08, 4.5)),
+						Transform3D(wb, wp - Vector3.UP * 0.80)])
+			_add_merged(group, "PlatformWindscreens", wind_items, screen_glass)
 		if yield_frames:
 			await get_tree().process_frame
 
-		var sgn := _station_sign(station_name, true)
+		var sgn := _station_sign(platform_text, true)
 		var sf := route.frame_at(dist)
 		var sfb := sf.basis.orthonormalized() * Basis(Vector3.UP, -side * PI * 0.5)
 		sgn.transform = Transform3D(sfb,
-				sf.origin + sf.basis.x *(side *(lat_c + 0.9)) + Vector3.UP *(top + 3.3))
+				sf.origin + sf.basis.x *(side *(lat_c + 0.15)) + Vector3.UP *(top + 3.3))
 		group.add_child(sgn)
 		if yield_frames:
 			await get_tree().process_frame
@@ -1707,11 +1858,11 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 
 
 	if freight:
-		var fsgn := _station_sign(station_name, true)
+		var fsgn := _station_sign(platform_text, true)
 		var fsf := route.frame_at(dist)
 		var fsb := fsf.basis.orthonormalized() * Basis(Vector3.UP, -side * PI * 0.5)
 		fsgn.transform = Transform3D(fsb,
-				fsf.origin + fsf.basis.x *(side *(lat_c + 0.9)) + Vector3.UP *(top + 3.3))
+				fsf.origin + fsf.basis.x *(side *(lat_c + 0.15)) + Vector3.UP *(top + 3.3))
 		group.add_child(fsgn)
 
 	var bdg_frame := route.frame_at(dist)
@@ -2196,77 +2347,11 @@ func _build_station(dist: float, station_name: String, side: float, freight := f
 	hall_light.shadow_enabled = false
 	bdg.add_child(hall_light)
 
-	# Waiting passengers: merged low-poly figures, so the hall and platform
-	# feel occupied without adding hundreds of nodes or dynamic draw calls.
-	var crowd_spots := []
-	var crowd_count := 6 if Config.quality <= Config.Quality.LOW else 12
-	for k in range(crowd_count):
-		var px := -2.5 + fmod(float(k) * 2.35, 5.0)
-		var pz := -14.0 + fmod(float(k) * 5.15, 28.0)
-		if absf(px) < 1.4 and absf(pz) < 4.5:
-			px += 2.2
-		crowd_spots.append({
-			"pos": Vector3(px, 0.0, pz),
-			"standing": k % 3 == 0,
-			"angle": -side * PI * 0.5 if k % 2 == 0 else side * PI * 0.5,
-		})
-	_add_crowd(bdg, crowd_spots, 3101 + station_index)
-	var platform_crowd := []
-	var platform_people := 5 if Config.quality <= Config.Quality.LOW else 9
-	for k in range(platform_people):
-		var pd := dist - platform_len * 0.38 + float(k) * platform_len * 0.095
-		var pf := route.frame_at(pd)
-		var pp := pf.origin + pf.basis.x * (side * (lat_c + 1.45)) \
-				+ pf.basis.z * (float(k % 3) - 1.0) * 1.6 + Vector3.UP * top
-		platform_crowd.append({
-			"pos": pp, "standing": k % 4 != 0,
-			"angle": pf.basis.get_euler().y + (0.4 if k % 2 == 0 else -0.3),
-		})
-	_add_crowd(group, platform_crowd, 5101 + station_index)
-
 	var sign_basis := bdg_basis * Basis(Vector3.UP, -side * PI * 0.5)
 	var sign := _station_sign(station_name)
 	sign.transform = Transform3D(sign_basis,
 			bdg_pos + bdg_basis.x * (inner_x - side * 0.30) + Vector3.UP * (hall_h - 1.6))
 	group.add_child(sign)
-
-func _add_crowd(parent: Node3D, spots: Array, seed_value: int) -> void:
-	if spots.is_empty():
-		return
-	var rng := RandomNumberGenerator.new()
-	rng.seed = seed_value
-	var coats := [
-		Gfx.paint(Color(0.12, 0.18, 0.27), 0.62, 0.04, 0.16),
-		Gfx.paint(Color(0.38, 0.17, 0.14), 0.62, 0.04, 0.16),
-		Gfx.paint(Color(0.30, 0.33, 0.30), 0.64, 0.03, 0.14),
-	]
-	var skin := Gfx.paint(Color(0.76, 0.60, 0.46), 0.6, 0.02, 0.12)
-	var groups := [[], [], []]
-	var heads := []
-	for spot: Dictionary in spots:
-		var p: Vector3 = spot.get("pos", Vector3.ZERO)
-		var b := Basis(Vector3.UP, float(spot.get("angle", 0.0)))
-		var standing := bool(spot.get("standing", true))
-		var gi := rng.randi_range(0, 2)
-		if standing:
-			for lx: float in [-0.09, 0.09]:
-				groups[gi].append([Forge.box(Vector3(0.13, 0.55, 0.16)),
-					Transform3D(b, p + b * Vector3(lx, 0.29, 0))])
-			groups[gi].append([Forge.box(Vector3(0.36, 0.66, 0.24)),
-				Transform3D(b, p + b * Vector3(0, 0.91, 0))])
-			groups[gi].append([Forge.box(Vector3(0.30, 0.12, 0.30)),
-				Transform3D(b, p + b * Vector3(0, 1.22, 0))])
-			heads.append([Forge.box(Vector3(0.18, 0.21, 0.18)),
-				Transform3D(b, p + b * Vector3(0, 1.42, 0))])
-		else:
-			groups[gi].append([Forge.box(Vector3(0.39, 0.52, 0.27)),
-				Transform3D(b, p + b * Vector3(0, 0.86, 0))])
-			heads.append([Forge.box(Vector3(0.18, 0.21, 0.18)),
-				Transform3D(b, p + b * Vector3(0, 1.23, 0))])
-	for gi in range(3):
-		_add_merged(parent, "WaitingPeople%d" %gi, groups[gi], coats[gi])
-	_add_merged(parent, "WaitingPeopleHeads", heads, skin)
-
 
 func _add_merged(parent: Node3D, nm: String, items: Array, mat: Material) -> void:
 	if items.is_empty():

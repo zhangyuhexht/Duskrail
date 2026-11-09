@@ -3,7 +3,7 @@ extends Node3D
 
 
 const GAME_NAME := "Duskrail"
-const VERSION := "alpha1.10"
+const VERSION := "alpha1.11"
 const LOADING_SCREEN := preload("res://src/ui/loading_screen.gd")
 
 var shot_path := ""
@@ -148,7 +148,7 @@ func _after_boot() -> void:
 		return
 	if _test_mode_test and _qa_new_mode == "":
 		_qa_new_mode = "test"
-	if _alpha110_test and _qa_new_mode == "":
+	if _alpha111_test and _qa_new_mode == "":
 		_qa_new_mode = "open"
 	if _qa_new_mode != "":
 		var qid := SaveManager.new_slot_id()
@@ -169,8 +169,8 @@ func _after_boot() -> void:
 		if _test_mode_test and game != null:
 			await _run_test_mode_test()
 			return
-		if _alpha110_test and game != null:
-			await _run_alpha110_test()
+		if _alpha111_test and game != null:
+			await _run_alpha111_test()
 			return
 		if shot_path != "":
 			await get_tree().process_frame
@@ -423,8 +423,8 @@ func _parse_cmdline() -> void:
 			_consist_ui_test = true
 		elif a == "--test-mode-test":
 			_test_mode_test = true
-		elif a == "--alpha110-test":
-			_alpha110_test = true
+		elif a == "--alpha111-test" or a == "--alpha110-test":
+			_alpha111_test = true
 		elif a == "--walk-test":
 			_walk_test = true
 		elif a == "--train-walk-test":
@@ -504,7 +504,7 @@ var _qa_consist_select := -1
 var _consist_load_test := false
 var _consist_ui_test := false
 var _test_mode_test := false
-var _alpha110_test := false
+var _alpha111_test := false
 var _walk_test := false
 var _train_walk_test := false
 var _legacy_save_test := false
@@ -1030,11 +1030,11 @@ func _rect_gap(a: PackedVector2Array, b: PackedVector2Array) -> float:
 	return best
 
 
-func _run_alpha110_test() -> void:
+func _run_alpha111_test() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	if game == null or game.train == null or game.rig == null:
-		print("[alpha110-test] FAIL missing game")
+		print("[alpha111-test] FAIL missing game")
 		get_tree().quit(1)
 		return
 	var branch_count := 0
@@ -1049,16 +1049,8 @@ func _run_alpha110_test() -> void:
 			presets_ok = false
 	var hall_ok := game.hall_spots.size() >= 20 \
 			and game.hall_gates.size() == 28 and game.hall_belts.size() == 14
-	var street_ok := game.street_lives.size() > 0
-	var street_cars := 0
-	var street_peds := 0
-	for sl in game.street_lives:
-		if sl == null:
-			continue
-		var cars_arr: Array = sl.get("_cars")
-		var peds_arr: Array = sl.get("_peds")
-		street_cars += cars_arr.size()
-		street_peds += peds_arr.size()
+	var platform_signs := game.find_children("PlatformNumber_*", "MeshInstance3D", true, false).size()
+	var platform_ok := platform_signs == game.station_data.size() * 2
 	var gate: Dictionary = game.hall_gates[0] if not game.hall_gates.is_empty() else {}
 	var gate_block := false
 	var gate_open_ok := false
@@ -1092,44 +1084,31 @@ func _run_alpha110_test() -> void:
 			shop_ok = game.coffee_until > Time.get_ticks_msec() / 1000.0
 			break
 	game.rig._on_foot = false
-	# Passenger preset: rebuild with coaches, check seated passengers exist and
-	# the boarding flow starts when doors open at a platform.
+	var actors_ok := game.find_children("WaitingPeople*", "MeshInstance3D", true, false).is_empty() \
+			and game.find_children("CityCars*", "MeshInstance3D", true, false).is_empty() \
+			and game.find_children("StreetLife*", "Node3D", true, false).is_empty()
 	game.start_preset(2)
 	await get_tree().process_frame
 	var coaches := 0
-	var passenger_nodes := 0
-	var flow_ok := false
 	for v in game.train.vehicles:
 		if v.kind == "coach":
 			coaches += 1
-			var pf := v.get_node_or_null("PassengerFlow")
-			if pf != null:
-				for c in pf.get_children():
-					if String(c.name).begins_with("Passenger"):
-						passenger_nodes += 1
-				if not flow_ok:
-					game.train.speed = 0.0
-					game.train.handbrake = true
-					game.train.doors_open = true
-					game.train.door_open_side = 1
-					pf._begin_cycle()
-					pf._spawn_pending()
-					var walkers_arr: Array = pf.get("_walkers")
-					flow_ok = walkers_arr.size() > 0
-					game.train.doors_open = false
-					game.train.door_open_side = 0
-	var passengers_ok := coaches >= 4 and passenger_nodes >= 20 and flow_ok
+			if v.get_node_or_null("PassengerFlow") != null:
+				actors_ok = false
+			for child in v.find_children("Passenger*", "Node3D", true, false):
+				if String(child.name).begins_with("Passenger") and String(child.name) != "PassengerCoach":
+					actors_ok = false
+					break
 	game.start_free_drive()
 	game.free_drive_goto(5)
 	var free_ok := game.free_drive and absf(game.train.distance - float(game.station_data[5]["stop"])) < 0.2
-	print("[alpha110-test] stations=%s presets=%s hall=%s streets=%s cars=%d peds=%d gate_block=%s gate_open=%s ticket=%s shop=%s passengers=%s coaches=%d pax_nodes=%d free=%s" %[
-		str(stations_ok), str(presets_ok), str(hall_ok), str(street_ok), street_cars, street_peds,
-		str(gate_block), str(gate_open_ok), str(ticket_ok), str(shop_ok),
-		str(passengers_ok), coaches, passenger_nodes, str(free_ok)])
-	var ok := stations_ok and presets_ok and hall_ok and street_ok and street_cars > 0 \
-			and street_peds > 0 and gate_block and gate_open_ok and ticket_ok and shop_ok \
-			and passengers_ok and free_ok
-	print("[alpha110-test] ok=%s" %str(ok))
+	print("[alpha111-test] stations=%s presets=%s hall=%s platform=%s signs=%d actors=%s gate_block=%s gate_open=%s ticket=%s shop=%s coaches=%d free=%s" %[
+		str(stations_ok), str(presets_ok), str(hall_ok), str(platform_ok), platform_signs,
+		str(actors_ok), str(gate_block), str(gate_open_ok), str(ticket_ok), str(shop_ok),
+		coaches, str(free_ok)])
+	var ok := stations_ok and presets_ok and hall_ok and platform_ok and actors_ok \
+			and gate_block and gate_open_ok and ticket_ok and shop_ok and free_ok
+	print("[alpha111-test] ok=%s" %str(ok))
 	get_tree().quit(0 if ok else 1)
 
 
@@ -2070,6 +2049,42 @@ func _capture_and_quit() -> void:
 					var target := hf.origin + hf.basis.x * (hs * 23.0) + hf.basis.z * (-4.0) + Vector3.UP * 2.4
 					pc.global_position = hf.origin + hf.basis.x * (hs * 12.4) + hf.basis.z * 8.0 + Vector3.UP * 2.8
 					pc.look_at(target)
+			elif _qa_part_cam.begins_with("platform-") and not _qa_part_cam.begins_with("platform-detail-"):
+				var pidx := int(_qa_part_cam.trim_prefix("platform-"))
+				if pidx >= 0 and pidx < game.station_data.size():
+					var pst: Dictionary = game.station_data[pidx]
+					var pf: Transform3D = game.route.frame_at(float(pst["dist"]))
+					var pside := signf(float(pst.get("side", 1.0)))
+					var ptop2 := float(pst.get("platform_top", 1.1))
+					var plat_len := float(pst.get("platform_len", 300.0))
+					var plat_lat := float(pst.get("platform_lat", 4.6))
+					var target2 := pf.origin + pf.basis.x * (pside * plat_lat) + Vector3.UP * (ptop2 + 1.8)
+					pc.global_position = target2 + pf.basis.z * (-plat_len * 0.46) + Vector3.UP * 4.2
+					pc.look_at(target2 + pf.basis.z * 8.0)
+			elif _qa_part_cam.begins_with("platform-detail-"):
+				var didx := int(_qa_part_cam.trim_prefix("platform-detail-"))
+				if didx >= 0 and didx < game.station_data.size():
+					var dst: Dictionary = game.station_data[didx]
+					var df: Transform3D = game.route.frame_at(float(dst["dist"]))
+					var dside := signf(float(dst.get("side", 1.0)))
+					var dtop := float(dst.get("platform_top", 1.1))
+					var dlat := float(dst.get("platform_lat", 4.6))
+					var target3 := df.origin + df.basis.x * (dside * (dlat + 1.5)) + Vector3.UP * (dtop + 1.9)
+					pc.global_position = df.origin + df.basis.x * (dside * (dlat - 2.1)) \
+							+ df.basis.z * 22.0 + Vector3.UP * (dtop + 3.4)
+					pc.look_at(target3)
+			elif _qa_part_cam.begins_with("platform-sign-"):
+				var sidx := int(_qa_part_cam.trim_prefix("platform-sign-"))
+				if sidx >= 0 and sidx < game.station_data.size():
+					var sst: Dictionary = game.station_data[sidx]
+					var sf2: Transform3D = game.route.frame_at(float(sst["dist"]))
+					var sside := signf(float(sst.get("side", 1.0)))
+					var stop2 := float(sst.get("platform_top", 1.1))
+					var slat := float(sst.get("platform_lat", 4.6))
+					var starget := sf2.origin + sf2.basis.x * (sside * (slat + 1.5)) + Vector3.UP * (stop2 + 2.2)
+					pc.global_position = sf2.origin + sf2.basis.x * (sside * (slat - 2.0)) \
+							+ sf2.basis.z * 8.0 + Vector3.UP * (stop2 + 2.5)
+					pc.look_at(starget)
 			elif _qa_part_cam == "hall-gate":
 				if not game.hall_gates.is_empty():
 					var gn := game.hall_gates[1]["node"] as Node3D
